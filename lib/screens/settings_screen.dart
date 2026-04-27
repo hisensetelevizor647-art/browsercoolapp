@@ -1,38 +1,54 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../services/settings_service.dart';
+
+import '../services/app_localizer.dart';
 import '../services/gemini_service.dart';
+import '../services/settings_service.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 20),
           child: Consumer<SettingsService>(
             builder: (context, settings, child) {
+              final l10n = AppLocalizer.fromCode(settings.language);
               return Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text('Settings', style: const TextStyle(fontSize: 14)),
+                  Text(
+                    l10n.settings,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
                   const SizedBox(height: 12),
 
-                  // Model Selection
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.05),
+                      color: theme.colorScheme.surface.withOpacity(0.85),
                       borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: theme.colorScheme.outline.withOpacity(0.25),
+                      ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'AI Model',
-                          style: TextStyle(fontSize: 11, color: Colors.grey),
+                        Text(
+                          l10n.aiModel,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: theme.colorScheme.onSurface.withOpacity(0.7),
+                          ),
                         ),
                         const SizedBox(height: 6),
                         ...SettingsService.availableModels.map((model) {
@@ -49,20 +65,25 @@ class SettingsScreen extends StatelessWidget {
 
                   const SizedBox(height: 12),
 
-                  // Theme Toggle
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 10,
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.05),
+                      color: theme.colorScheme.surface.withOpacity(0.85),
                       borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: theme.colorScheme.outline.withOpacity(0.25),
+                      ),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Dark Mode', style: TextStyle(fontSize: 12)),
+                        Text(
+                          l10n.darkMode,
+                          style: const TextStyle(fontSize: 12),
+                        ),
                         Transform.scale(
                           scale: 0.8,
                           child: Switch(
@@ -80,20 +101,25 @@ class SettingsScreen extends StatelessWidget {
 
                   const SizedBox(height: 12),
 
-                  // Language Selection
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 10,
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.05),
+                      color: theme.colorScheme.surface.withOpacity(0.85),
                       borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: theme.colorScheme.outline.withOpacity(0.25),
+                      ),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Language', style: TextStyle(fontSize: 12)),
+                        Text(
+                          l10n.language,
+                          style: const TextStyle(fontSize: 12),
+                        ),
                         DropdownButton<String>(
                           value: settings.language,
                           underline: const SizedBox(),
@@ -126,13 +152,15 @@ class SettingsScreen extends StatelessWidget {
 
                   const SizedBox(height: 16),
 
-                  // Back Button
                   SizedBox(
                     width: double.infinity,
                     child: TextButton.icon(
                       onPressed: () => Navigator.pop(context),
                       icon: const Icon(Icons.arrow_back, size: 16),
-                      label: const Text('Back', style: TextStyle(fontSize: 12)),
+                      label: Text(
+                        l10n.back,
+                        style: const TextStyle(fontSize: 12),
+                      ),
                     ),
                   ),
                 ],
@@ -150,6 +178,7 @@ class SettingsScreen extends StatelessWidget {
     String value,
     String label,
   ) {
+    final theme = Theme.of(context);
     final isSelected = settings.model == value;
 
     return GestureDetector(
@@ -165,19 +194,29 @@ class SettingsScreen extends StatelessWidget {
               ? Colors.blue.shade400.withOpacity(0.2)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
-          border: isSelected
-              ? Border.all(color: Colors.blue.shade400.withOpacity(0.5))
-              : null,
+          border: Border.all(
+            color: isSelected
+                ? Colors.blue.shade400.withOpacity(0.5)
+                : theme.colorScheme.outline.withOpacity(0.15),
+          ),
         ),
         child: Row(
           children: [
             Icon(
               isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
               size: 16,
-              color: isSelected ? Colors.blue : Colors.grey,
+              color: isSelected
+                  ? Colors.blue
+                  : theme.colorScheme.onSurface.withOpacity(0.6),
             ),
             const SizedBox(width: 8),
-            Text(label, style: const TextStyle(fontSize: 12)),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
           ],
         ),
       ),

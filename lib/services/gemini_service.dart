@@ -1,13 +1,17 @@
-import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter/foundation.dart';
+import 'package:google_generative_ai/google_generative_ai.dart';
+
 import 'text_cleaner.dart';
 
 class GeminiService with ChangeNotifier {
   static const String apiKey = 'AIzaSyBDrlLzuoGuZIhaU7v5y_KQ2sLHdP83Lm0';
   static const int _maxContextMessages = 24;
+  static const String autoLanguageInstruction =
+      'Always respond in the same language as the latest user message. '
+      'If the user mixes languages, prefer the dominant language of the latest message. '
+      'Keep responses concise unless the user asks for detail.';
 
   GenerativeModel? _model;
-  String _languageCode = 'en';
   final List<Content> _chatHistory = [];
 
   bool _isLoading = false;
@@ -15,38 +19,8 @@ class GeminiService with ChangeNotifier {
 
   List<Content> get chatHistory => _chatHistory;
 
-  static String _normalizeLanguage(String languageCode) {
-    switch (languageCode) {
-      case 'uk':
-      case 'sk':
-      case 'en':
-        return languageCode;
-      default:
-        return 'en';
-    }
-  }
-
-  static String buildLanguageInstruction(String languageCode) {
-    switch (_normalizeLanguage(languageCode)) {
-      case 'uk':
-        return 'Відповідай лише українською мовою. '
-            'Не використовуй китайські, японські або корейські символи. '
-            'Відповідь має бути короткою і зрозумілою.';
-      case 'sk':
-        return 'Odpovedaj iba po slovensky. '
-            'Nepouzivaj cinske, japonske ani korejske znaky. '
-            'Odpoved musi byt strucna a jasna.';
-      case 'en':
-      default:
-        return 'Reply in English only. '
-            'Do not use Chinese, Japanese, or Korean characters. '
-            'Keep responses concise.';
-    }
-  }
-
   void init(String modelName, [String languageCode = 'en']) {
     _model = GenerativeModel(model: modelName, apiKey: apiKey);
-    _languageCode = _normalizeLanguage(languageCode);
   }
 
   void updateModel(String modelName) {
@@ -55,15 +29,13 @@ class GeminiService with ChangeNotifier {
   }
 
   void updateLanguage(String languageCode) {
-    _languageCode = _normalizeLanguage(languageCode);
+    // Interface language is handled by SettingsService/UI.
+    // Model response language follows the user's latest message.
   }
 
   Future<String?> sendMessage(String message) async {
     if (_model == null) return "Error: Model not initialized";
-    final trimmed = TextCleaner.clean(
-      message,
-      disallowCjk: _languageCode != 'zh',
-    );
+    final trimmed = TextCleaner.clean(message);
     if (trimmed.isEmpty) return null;
 
     _isLoading = true;
@@ -78,16 +50,13 @@ class GeminiService with ChangeNotifier {
           : 0;
       final recentHistory = _chatHistory.sublist(startIndex);
       final requestHistory = <Content>[
-        Content.text(buildLanguageInstruction(_languageCode)),
+        Content.text(autoLanguageInstruction),
         ...recentHistory,
       ];
-      final response = await _model!.generateContent(requestHistory);
-      final responseText = TextCleaner.clean(
-        response.text ?? '',
-        disallowCjk: _languageCode != 'zh',
-      );
-      final finalText = responseText.isEmpty ? 'No response' : responseText;
 
+      final response = await _model!.generateContent(requestHistory);
+      final responseText = TextCleaner.clean(response.text ?? '');
+      final finalText = responseText.isEmpty ? 'No response' : responseText;
       _chatHistory.add(Content.model([TextPart(finalText)]));
 
       return finalText;
@@ -103,7 +72,7 @@ class GeminiService with ChangeNotifier {
     _chatHistory.clear();
     for (final message in messages) {
       final role = message['role'] ?? 'user';
-      final text = (message['content'] ?? '').trim();
+      final text = TextCleaner.clean(message['content'] ?? '');
       if (text.isEmpty) continue;
 
       if (role == 'model') {
@@ -120,7 +89,6 @@ class GeminiService with ChangeNotifier {
     notifyListeners();
   }
 
-  // Start a new chat without clearing the displayed history
   void startNewChat() {
     _chatHistory.clear();
     notifyListeners();

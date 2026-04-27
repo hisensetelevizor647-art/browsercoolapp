@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
+import '../services/app_localizer.dart';
 import '../services/gemini_service.dart';
 import '../services/settings_service.dart';
 import '../services/text_cleaner.dart';
@@ -23,7 +24,6 @@ class AssistantScreen extends StatefulWidget {
 class _AssistantScreenState extends State<AssistantScreen>
     with SingleTickerProviderStateMixin {
   static const String _assistantModel = 'gemini-3.1-flash-lite-preview';
-  static const String _idleHint = 'Tap mic to talk';
   static final _accentColor = Colors.blueAccent.shade400;
 
   final stt.SpeechToText _speech = stt.SpeechToText();
@@ -34,9 +34,16 @@ class _AssistantScreenState extends State<AssistantScreen>
 
   bool _isListening = false;
   bool _subtitlesEnabled = false;
-
   String _spokenText = '';
-  String _replyText = _idleHint;
+  String _replyText = '';
+
+  AppLocalizer _l10n() {
+    final language = Provider.of<SettingsService>(
+      context,
+      listen: false,
+    ).language;
+    return AppLocalizer.fromCode(language);
+  }
 
   @override
   void initState() {
@@ -55,6 +62,9 @@ class _AssistantScreenState extends State<AssistantScreen>
       if (!mounted) return;
       final settings = Provider.of<SettingsService>(context, listen: false);
       await _ttsService.setLanguageCode(settings.language);
+      setState(() {
+        _replyText = _l10n().idleAssistantHint;
+      });
     });
   }
 
@@ -67,12 +77,13 @@ class _AssistantScreenState extends State<AssistantScreen>
   }
 
   Future<void> _startListening() async {
+    final l10n = _l10n();
     final micStatus = await Permission.microphone.request();
     if (micStatus != PermissionStatus.granted) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Microphone permission required')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.micPermissionRequired)));
       return;
     }
 
@@ -98,7 +109,7 @@ class _AssistantScreenState extends State<AssistantScreen>
     setState(() {
       _isListening = true;
       _spokenText = '';
-      _replyText = 'Listening...';
+      _replyText = l10n.listening;
     });
 
     _speech.listen(
@@ -120,39 +131,33 @@ class _AssistantScreenState extends State<AssistantScreen>
   }
 
   Future<void> _askAssistant(String prompt) async {
+    final l10n = _l10n();
     final settings = Provider.of<SettingsService>(context, listen: false);
-    final languageCode = settings.language;
-    final cleanPrompt = TextCleaner.clean(
-      prompt,
-      disallowCjk: languageCode != 'zh',
-    );
+    final cleanPrompt = TextCleaner.clean(prompt);
     if (cleanPrompt.isEmpty) {
       if (!mounted) return;
       setState(() {
-        _replyText = _idleHint;
+        _replyText = l10n.idleAssistantHint;
       });
       return;
     }
 
     setState(() {
-      _replyText = 'Thinking...';
+      _replyText = l10n.thinking;
     });
 
     try {
       final response = await _assistantModelClient.generateContent([
-        Content.text(GeminiService.buildLanguageInstruction(languageCode)),
+        Content.text(GeminiService.autoLanguageInstruction),
         Content.text(cleanPrompt),
       ]);
-      final answer = TextCleaner.clean(
-        response.text ?? '',
-        disallowCjk: languageCode != 'zh',
-      );
-      final finalAnswer = answer.isEmpty ? 'No response' : answer;
+      final answer = TextCleaner.clean(response.text ?? '');
+      final finalAnswer = answer.isEmpty ? l10n.noResponse : answer;
 
       if (_subtitlesEnabled) {
         await _ttsService.stop();
       } else {
-        await _ttsService.setLanguageCode(languageCode);
+        await _ttsService.setLanguageCode(settings.language);
         await _ttsService.speak(finalAnswer);
       }
 
@@ -163,7 +168,7 @@ class _AssistantScreenState extends State<AssistantScreen>
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _replyText = 'Error while generating reply';
+        _replyText = l10n.replyError;
       });
     }
   }
@@ -179,12 +184,15 @@ class _AssistantScreenState extends State<AssistantScreen>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final modelName = Provider.of<SettingsService>(
       context,
       listen: false,
     ).modelDisplayName.toUpperCase();
+    final onSurface = theme.colorScheme.onSurface;
+
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
         child: Padding(
           padding: EdgeInsets.fromLTRB(
@@ -195,7 +203,6 @@ class _AssistantScreenState extends State<AssistantScreen>
           ),
           child: Column(
             children: [
-              // Top Model Name
               Text(
                 modelName,
                 style: TextStyle(
@@ -205,13 +212,8 @@ class _AssistantScreenState extends State<AssistantScreen>
                 ),
               ),
               const Spacer(),
-
-              // Animated Logo with Orbiting Dots
               _buildAnimatedLogo(),
-
               const SizedBox(height: 12),
-
-              // Content / Status area
               Container(
                 constraints: const BoxConstraints(minHeight: 50, maxHeight: 80),
                 padding: const EdgeInsets.symmetric(
@@ -219,10 +221,10 @@ class _AssistantScreenState extends State<AssistantScreen>
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.08),
+                  color: theme.colorScheme.surface.withOpacity(0.82),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: Colors.white.withOpacity(0.1),
+                    color: theme.colorScheme.outline.withOpacity(0.2),
                     width: 0.5,
                   ),
                 ),
@@ -233,19 +235,17 @@ class _AssistantScreenState extends State<AssistantScreen>
                         : (_isListening ? _spokenText : _replyText),
                     style: TextStyle(
                       fontSize: 11,
-                      color: _isListening ? Colors.redAccent : Colors.white70,
+                      color: _isListening
+                          ? Colors.redAccent
+                          : onSurface.withOpacity(0.85),
                     ),
                   ),
                 ),
               ),
-
               const Spacer(),
-
-              // Bottom Controls
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Subtitles / Voice Toggle
                   _buildSideButton(
                     onPressed: _toggleReplyMode,
                     icon: _subtitlesEnabled
@@ -254,7 +254,6 @@ class _AssistantScreenState extends State<AssistantScreen>
                     color: _subtitlesEnabled ? Colors.amber : _accentColor,
                   ),
                   const SizedBox(width: 12),
-                  // Centered Mic Button
                   SizedBox(
                     width: 56,
                     height: 56,
@@ -270,16 +269,15 @@ class _AssistantScreenState extends State<AssistantScreen>
                             ? Icons.mic_off_rounded
                             : Icons.mic_rounded,
                         size: 28,
-                        color: Colors.white,
+                        color: theme.colorScheme.onPrimary,
                       ),
                     ),
                   ),
                   const SizedBox(width: 12),
-                  // Close Assistant / Go Home
                   _buildSideButton(
                     onPressed: () => Navigator.of(context).pop(),
                     icon: Icons.close_rounded,
-                    color: Colors.grey,
+                    color: onSurface.withOpacity(0.7),
                   ),
                 ],
               ),
@@ -311,6 +309,7 @@ class _AssistantScreenState extends State<AssistantScreen>
   }
 
   Widget _buildAnimatedLogo() {
+    final theme = Theme.of(context);
     return SizedBox(
       width: 140,
       height: 140,
@@ -320,12 +319,9 @@ class _AssistantScreenState extends State<AssistantScreen>
           return Stack(
             alignment: Alignment.center,
             children: [
-              // Orbiting circles (Voice visualization)
               _buildOrbitDot(0, 48, 8),
               _buildOrbitDot(1, 56, 10),
               _buildOrbitDot(2, 64, 7),
-
-              // Pulse effect when listening
               if (_isListening)
                 TweenAnimationBuilder<double>(
                   tween: Tween(begin: 1.0, end: 1.3),
@@ -344,13 +340,11 @@ class _AssistantScreenState extends State<AssistantScreen>
                     );
                   },
                 ),
-
-              // Central App Icon
               Container(
                 width: 80,
                 height: 80,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: theme.colorScheme.surface,
                   borderRadius: BorderRadius.circular(40),
                   boxShadow: [
                     BoxShadow(
@@ -375,7 +369,7 @@ class _AssistantScreenState extends State<AssistantScreen>
   }
 
   Widget _buildOrbitDot(int index, double radius, double size) {
-    final speed = 1.0 + (index * 0.2); // Different speeds for each dot
+    final speed = 1.0 + (index * 0.2);
     final angleOffset = (2 * math.pi / 3) * index;
     final angle = (_orbitController.value * 2 * math.pi * speed) + angleOffset;
     final dx = math.cos(angle) * radius;

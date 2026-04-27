@@ -4,6 +4,7 @@ import 'package:wear/wear.dart';
 import 'services/gemini_service.dart';
 import 'services/settings_service.dart';
 import 'services/chat_history_service.dart';
+import 'services/app_localizer.dart';
 import 'screens/assistant_screen.dart';
 import 'screens/home_screen.dart';
 
@@ -54,13 +55,14 @@ class MyApp extends StatelessWidget {
             primarySwatch: Colors.blue,
             visualDensity: VisualDensity.compact,
             useMaterial3: true,
+            scaffoldBackgroundColor: Colors.grey.shade100,
           ),
           darkTheme: ThemeData(
             brightness: Brightness.dark,
             primarySwatch: Colors.blue,
             visualDensity: VisualDensity.compact,
             useMaterial3: true,
-            scaffoldBackgroundColor: Colors.black,
+            scaffoldBackgroundColor: Colors.grey.shade900,
           ),
           themeMode: settings.themeMode,
           initialRoute: initialRoute,
@@ -112,35 +114,44 @@ class AmbientWatchFace extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(32),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(32),
-                child: Image.asset(
-                  'assets/icon/app_icon.png',
-                  fit: BoxFit.cover,
+    return Consumer<SettingsService>(
+      builder: (context, settings, _) {
+        final l10n = AppLocalizer.fromCode(settings.language);
+        final theme = Theme.of(context);
+        return Scaffold(
+          backgroundColor: theme.scaffoldBackgroundColor,
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface,
+                    borderRadius: BorderRadius.circular(32),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(32),
+                    child: Image.asset(
+                      'assets/icon/app_icon.png',
+                      fit: BoxFit.cover,
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(height: 8),
+                Text(
+                  l10n.tapToWake,
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface.withOpacity(0.65),
+                    fontSize: 11,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Tap to wake',
-              style: TextStyle(color: Colors.grey[700], fontSize: 11),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

@@ -82,11 +82,13 @@ class ChatHistoryService with ChangeNotifier {
     }
   }
 
-  Future<String> createNewSession() async {
+  Future<String> createNewSession({String title = 'New Chat'}) async {
     final id = DateTime.now().millisecondsSinceEpoch.toString();
     final session = ChatSession(
       id: id,
-      title: 'New Chat',
+      title: TextCleaner.clean(title).isEmpty
+          ? 'New Chat'
+          : TextCleaner.clean(title),
       createdAt: DateTime.now(),
       messages: [],
     );
@@ -104,7 +106,7 @@ class ChatHistoryService with ChangeNotifier {
   }
 
   Future<void> addMessageToCurrentSession(String role, String content) async {
-    final cleanedContent = TextCleaner.clean(content, disallowCjk: true);
+    final cleanedContent = TextCleaner.clean(content);
     if (cleanedContent.isEmpty) return;
 
     if (_currentSessionId == null) {

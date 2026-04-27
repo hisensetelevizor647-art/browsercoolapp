@@ -32,12 +32,12 @@ jobs:
         run: flutter test
 
       - name: Build APK
-        run: flutter build apk --release --target-platform android-arm --no-tree-shake-icons
+        run: flutter build apk --release --no-tree-shake-icons
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ai-watch-apk
+          name: olewser-android-apk
           path: build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
           retention-days: 30

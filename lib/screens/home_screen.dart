@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:google_generative_ai/google_generative_ai.dart'
     show Content, TextPart;
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
-import 'package:permission_handler/permission_handler.dart';
+
+import '../services/app_localizer.dart';
+import '../services/chat_history_service.dart';
 import '../services/gemini_service.dart';
 import '../services/settings_service.dart';
-import '../services/chat_history_service.dart';
 import '../services/text_cleaner.dart';
+import '../services/watch_assistant_service.dart';
 import 'settings_screen.dart';
+
+enum _PromptPanelMode { none, chat, device }
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -30,27 +35,32 @@ class _HomeScreenState extends State<HomeScreen>
   static final _accentDarkColor = Colors.blue.shade700;
 
   final stt.SpeechToText _speech = stt.SpeechToText();
+  final TextEditingController _chatController = TextEditingController();
+  final FocusNode _chatFocusNode = FocusNode();
+  final TextEditingController _deviceController = TextEditingController();
+  final FocusNode _deviceFocusNode = FocusNode();
+  final WatchAssistantService _watchAssistantService = WatchAssistantService();
+
   bool _isListening = false;
-  String _promptText = "";
-  final TextEditingController _controller = TextEditingController();
-  final FocusNode _textFocusNode = FocusNode();
-  bool _showKeyboard = false;
   bool _showHistory = false;
+  bool _isLoadingApps = false;
+  String _deviceStatus = '';
+  _PromptPanelMode _panelMode = _PromptPanelMode.none;
+  List<WatchAppInfo> _apps = const [];
 
   late AnimationController _pulseController;
 
   @override
   void initState() {
     super.initState();
-    _showKeyboard = widget.openKeyboardOnStart;
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
 
-    if (_showKeyboard) {
+    if (widget.openKeyboardOnStart) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _textFocusNode.requestFocus();
+        _openPanel(_PromptPanelMode.chat);
       });
     }
   }
@@ -58,43 +68,90 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void dispose() {
     _pulseController.dispose();
-    _controller.dispose();
-    _textFocusNode.dispose();
+    _chatController.dispose();
+    _chatFocusNode.dispose();
+    _deviceController.dispose();
+    _deviceFocusNode.dispose();
     super.dispose();
   }
 
-  Future<void> _startListening() async {
-    final micStatus = await Permission.microphone.request();
-    if (micStatus != PermissionStatus.granted) return;
+  AppLocalizer _l10n(BuildContext context) {
+    final language = Provider.of<SettingsService>(
+      context,
+      listen: false,
+    ).language;
+    return AppLocalizer.fromCode(language);
+  }
 
-    final available = await _speech.initialize();
-    if (available) {
-      setState(() => _isListening = true);
-      _speech.listen(
-        onResult: (val) {
-          setState(() {
-            _promptText = val.recognizedWords;
-            _controller.text = _promptText;
-          });
-        },
-      );
+  Future<void> _startNewChat() async {
+    final l10n = _l10n(context);
+    final gemini = Provider.of<GeminiService>(context, listen: false);
+    final history = Provider.of<ChatHistoryService>(context, listen: false);
+    gemini.startNewChat();
+    await history.createNewSession(title: l10n.newChat);
+    if (!mounted) return;
+    setState(() {
+      _panelMode = _PromptPanelMode.none;
+      _showHistory = false;
+      _chatController.clear();
+      _deviceController.clear();
+      _deviceStatus = l10n.newChat;
+    });
+  }
+
+  Future<void> _startListening() async {
+    final l10n = _l10n(context);
+    final micStatus = await Permission.microphone.request();
+    if (micStatus != PermissionStatus.granted) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.micPermissionRequired)));
+      return;
     }
+
+    final available = await _speech.initialize(
+      onStatus: (status) {
+        if (status == 'notListening' && _isListening) {
+          _stopListening();
+        }
+      },
+      onError: (_) {
+        if (!mounted) return;
+        setState(() => _isListening = false);
+      },
+    );
+
+    if (!available) return;
+
+    if (!mounted) return;
+    setState(() {
+      _isListening = true;
+      _chatController.clear();
+      _openPanel(_PromptPanelMode.chat, requestFocus: false);
+    });
+    _speech.listen(
+      onResult: (val) {
+        if (!mounted) return;
+        setState(() {
+          _chatController.text = val.recognizedWords;
+        });
+      },
+    );
   }
 
   void _stopListening() {
     _speech.stop();
+    if (!mounted) return;
     setState(() => _isListening = false);
-    if (_promptText.isNotEmpty) {
-      _sendMessage(_promptText);
+    final spoken = _chatController.text.trim();
+    if (spoken.isNotEmpty) {
+      _sendChatMessage(spoken);
     }
   }
 
-  Future<void> _sendMessage(String text) async {
-    final settings = Provider.of<SettingsService>(context, listen: false);
-    final cleanedText = TextCleaner.clean(
-      text,
-      disallowCjk: settings.language != 'zh',
-    );
+  Future<void> _sendChatMessage(String text) async {
+    final cleanedText = TextCleaner.clean(text);
     if (cleanedText.isEmpty) return;
 
     final gemini = Provider.of<GeminiService>(context, listen: false);
@@ -107,9 +164,8 @@ class _HomeScreenState extends State<HomeScreen>
 
     if (!mounted) return;
     setState(() {
-      _promptText = "";
-      _controller.clear();
-      _showKeyboard = false;
+      _chatController.clear();
+      _panelMode = _PromptPanelMode.none;
     });
   }
 
@@ -121,17 +177,118 @@ class _HomeScreenState extends State<HomeScreen>
     if (!mounted) return;
     setState(() {
       _showHistory = false;
+      _panelMode = _PromptPanelMode.none;
     });
+  }
+
+  Future<void> _loadApps() async {
+    if (_isLoadingApps) return;
+    setState(() => _isLoadingApps = true);
+    try {
+      final apps = await _watchAssistantService.getLaunchableApps();
+      if (!mounted) return;
+      setState(() {
+        _apps = apps;
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingApps = false);
+      }
+    }
+  }
+
+  void _openPanel(_PromptPanelMode mode, {bool requestFocus = true}) {
+    setState(() {
+      _panelMode = _panelMode == mode ? _PromptPanelMode.none : mode;
+      _showHistory = false;
+    });
+
+    if (_panelMode == _PromptPanelMode.none) return;
+    if (_panelMode == _PromptPanelMode.device && _apps.isEmpty) {
+      _loadApps();
+    }
+    if (!requestFocus) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_panelMode == _PromptPanelMode.chat) {
+        _chatFocusNode.requestFocus();
+      } else if (_panelMode == _PromptPanelMode.device) {
+        _deviceFocusNode.requestFocus();
+      }
+    });
+  }
+
+  WatchAppInfo? _findBestApp(String prompt) {
+    final query = TextCleaner.clean(prompt).toLowerCase();
+    if (query.isEmpty) return null;
+
+    WatchAppInfo? bestApp;
+    var bestScore = 0;
+    final words = query.split(' ').where((w) => w.trim().isNotEmpty).toList();
+
+    for (final app in _apps) {
+      final appName = app.appName.toLowerCase();
+      final packageName = app.packageName.toLowerCase();
+      var score = 0;
+      if (appName == query || packageName == query) {
+        score += 50;
+      }
+      if (appName.contains(query) || packageName.contains(query)) {
+        score += 20;
+      }
+      for (final word in words) {
+        if (word.length < 2) continue;
+        if (appName.contains(word)) score += 4;
+        if (packageName.contains(word)) score += 2;
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        bestApp = app;
+      }
+    }
+
+    return bestScore > 0 ? bestApp : null;
+  }
+
+  Future<void> _openApp(WatchAppInfo app) async {
+    final l10n = _l10n(context);
+    final success = await _watchAssistantService.openApp(app.packageName);
+    if (!mounted) return;
+    setState(() {
+      _deviceStatus = success
+          ? l10n.appOpened(app.appName)
+          : l10n.appOpenFailed(app.appName);
+      if (success) {
+        _panelMode = _PromptPanelMode.none;
+        _deviceController.clear();
+      }
+    });
+  }
+
+  Future<void> _openAppFromPrompt() async {
+    final l10n = _l10n(context);
+    final prompt = _deviceController.text;
+    final match = _findBestApp(prompt);
+    if (match == null) {
+      setState(() {
+        _deviceStatus = l10n.appNotFound(prompt.trim());
+      });
+      return;
+    }
+    await _openApp(match);
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: Stack(
         children: [
           _buildMainContent(),
           if (_showHistory) _buildHistoryOverlay(),
+          if (_panelMode != _PromptPanelMode.none) _buildPromptPanel(),
           _buildTopControls(),
           _buildBottomControls(),
         ],
@@ -143,17 +300,23 @@ class _HomeScreenState extends State<HomeScreen>
     final topInset = widget.isRound ? 22.0 : 10.0;
     return Positioned(
       top: topInset,
-      left: 0,
-      right: 0,
+      left: widget.isRound ? 8 : 4,
+      right: widget.isRound ? 8 : 4,
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _buildSmallButton(
-            icon: Icons.history_rounded,
-            onPressed: () => setState(() => _showHistory = !_showHistory),
-            isActive: _showHistory,
+          _buildSmallButton(icon: Icons.add_rounded, onPressed: _startNewChat),
+          Expanded(
+            child: Center(
+              child: _buildSmallButton(
+                icon: Icons.history_rounded,
+                onPressed: () => setState(() {
+                  _showHistory = !_showHistory;
+                  _panelMode = _PromptPanelMode.none;
+                }),
+                isActive: _showHistory,
+              ),
+            ),
           ),
-          const SizedBox(width: 25),
           _buildSmallButton(
             icon: Icons.settings_rounded,
             onPressed: () => Navigator.push(
@@ -167,28 +330,28 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildBottomControls() {
-    final bottomInset = widget.isRound ? 22.0 : 10.0;
+    final bottomInset = widget.isRound ? 20.0 : 10.0;
     return Positioned(
       bottom: bottomInset,
-      left: 0,
-      right: 0,
+      left: widget.isRound ? 8 : 4,
+      right: widget.isRound ? 8 : 4,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           _buildSmallButton(
-            icon: Icons.add_rounded,
-            onPressed: () => setState(() {
-              _showKeyboard = true;
-              _textFocusNode.requestFocus();
-            }),
-            isActive: _showKeyboard,
+            icon: Icons.devices_rounded,
+            onPressed: () => _openPanel(_PromptPanelMode.device),
+            isActive: _panelMode == _PromptPanelMode.device,
+            size: 40,
           ),
-          const SizedBox(width: 15),
+          const SizedBox(width: 14),
           _buildMicButton(),
-          const SizedBox(width: 15),
+          const SizedBox(width: 14),
           _buildSmallButton(
-            icon: Icons.assistant_rounded,
-            onPressed: () => Navigator.pushNamed(context, '/assistant'),
+            icon: Icons.keyboard_rounded,
+            onPressed: () => _openPanel(_PromptPanelMode.chat),
+            isActive: _panelMode == _PromptPanelMode.chat,
+            size: 40,
           ),
         ],
       ),
@@ -201,15 +364,27 @@ class _HomeScreenState extends State<HomeScreen>
     bool isActive = false,
     double size = 42,
   }) {
+    final theme = Theme.of(context);
+    final onSurface = theme.colorScheme.onSurface;
+    final baseColor = theme.colorScheme.surface;
+
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         color: isActive
-            ? _accentColor.withOpacity(0.3)
-            : Colors.grey.shade900.withOpacity(0.5),
+            ? _accentColor.withOpacity(0.22)
+            : baseColor.withOpacity(
+                theme.brightness == Brightness.dark ? 0.72 : 0.92,
+              ),
         shape: BoxShape.circle,
-        border: isActive ? Border.all(color: _accentColor, width: 1) : null,
+        border: Border.all(
+          color: isActive
+              ? _accentColor
+              : onSurface.withOpacity(
+                  theme.brightness == Brightness.dark ? 0.28 : 0.2,
+                ),
+        ),
       ),
       child: Material(
         color: Colors.transparent,
@@ -217,13 +392,15 @@ class _HomeScreenState extends State<HomeScreen>
         child: InkWell(
           customBorder: const CircleBorder(),
           onTap: onPressed,
-          child: Icon(icon, size: size * 0.5, color: Colors.white),
+          child: Icon(icon, size: size * 0.5, color: onSurface),
         ),
       ),
     );
   }
 
   Widget _buildMicButton() {
+    final theme = Theme.of(context);
+    final onPrimary = theme.colorScheme.onPrimary;
     return AnimatedBuilder(
       animation: _pulseController,
       builder: (context, child) {
@@ -253,7 +430,7 @@ class _HomeScreenState extends State<HomeScreen>
             child: Icon(
               _isListening ? Icons.mic_off_rounded : Icons.mic_rounded,
               size: 28,
-              color: Colors.white,
+              color: onPrimary,
             ),
           ),
         );
@@ -264,6 +441,10 @@ class _HomeScreenState extends State<HomeScreen>
   Widget _buildMainContent() {
     return Consumer2<GeminiService, SettingsService>(
       builder: (context, gemini, settings, _) {
+        final l10n = AppLocalizer.fromCode(settings.language);
+        final theme = Theme.of(context);
+        final onSurface = theme.colorScheme.onSurface;
+
         if (gemini.chatHistory.isEmpty && !gemini.isLoading) {
           return Center(
             child: Column(
@@ -295,16 +476,19 @@ class _HomeScreenState extends State<HomeScreen>
                 const SizedBox(height: 16),
                 Text(
                   settings.modelDisplayName.toUpperCase(),
-                  style: const TextStyle(
-                    color: Colors.grey,
+                  style: TextStyle(
+                    color: onSurface.withOpacity(0.55),
                     fontSize: 10,
                     letterSpacing: 1.2,
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
-                  "Tap to speak",
-                  style: TextStyle(color: Colors.grey, fontSize: 13),
+                Text(
+                  l10n.tapToSpeak,
+                  style: TextStyle(
+                    color: onSurface.withOpacity(0.62),
+                    fontSize: 13,
+                  ),
                 ),
               ],
             ),
@@ -314,9 +498,9 @@ class _HomeScreenState extends State<HomeScreen>
         return ListView.builder(
           padding: EdgeInsets.fromLTRB(
             widget.isRound ? 22 : 14,
-            widget.isRound ? 56 : 40,
+            widget.isRound ? 58 : 42,
             widget.isRound ? 22 : 14,
-            widget.isRound ? 132 : 120,
+            widget.isRound ? 135 : 122,
           ),
           itemCount: gemini.chatHistory.length + (gemini.isLoading ? 1 : 0),
           itemBuilder: (context, index) {
@@ -339,7 +523,8 @@ class _HomeScreenState extends State<HomeScreen>
             }
             final content = gemini.chatHistory[index];
             final isUser = content.role != 'model';
-            final text = _extractContentText(content, settings.language);
+            final text = _extractContentText(content);
+            final modelBubble = theme.colorScheme.surface;
 
             return Align(
               alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -350,7 +535,7 @@ class _HomeScreenState extends State<HomeScreen>
                   vertical: 10,
                 ),
                 constraints: BoxConstraints(
-                  maxWidth: MediaQuery.of(context).size.width * 0.8,
+                  maxWidth: MediaQuery.of(context).size.width * 0.82,
                 ),
                 decoration: BoxDecoration(
                   gradient: isUser
@@ -360,19 +545,25 @@ class _HomeScreenState extends State<HomeScreen>
                           end: Alignment.bottomRight,
                         )
                       : LinearGradient(
-                          colors: [Colors.grey[850]!, Colors.grey[900]!],
+                          colors: [
+                            modelBubble.withOpacity(0.95),
+                            modelBubble.withOpacity(0.86),
+                          ],
                         ),
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.2),
+                      color: theme.shadowColor.withOpacity(0.2),
                       blurRadius: 4,
                     ),
                   ],
                 ),
                 child: Text(
                   text,
-                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                  style: TextStyle(
+                    color: isUser ? theme.colorScheme.onPrimary : onSurface,
+                    fontSize: 13,
+                  ),
                 ),
               ),
             );
@@ -382,31 +573,210 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  Widget _buildPromptPanel() {
+    final settings = Provider.of<SettingsService>(context, listen: false);
+    final l10n = AppLocalizer.fromCode(settings.language);
+    final theme = Theme.of(context);
+    final isDevice = _panelMode == _PromptPanelMode.device;
+    final controller = isDevice ? _deviceController : _chatController;
+    final focusNode = isDevice ? _deviceFocusNode : _chatFocusNode;
+
+    return Positioned(
+      left: widget.isRound ? 10 : 6,
+      right: widget.isRound ? 10 : 6,
+      bottom: widget.isRound ? 92 : 80,
+      child: Container(
+        constraints: BoxConstraints(
+          minHeight: 80,
+          maxHeight: isDevice ? 190 : 115,
+        ),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface.withOpacity(0.94),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: theme.colorScheme.outline.withOpacity(0.3)),
+          boxShadow: [
+            BoxShadow(color: theme.shadowColor.withOpacity(0.2), blurRadius: 8),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              isDevice ? l10n.deviceControl : l10n.chatInput,
+              style: TextStyle(
+                fontSize: 11,
+                color: theme.colorScheme.onSurface.withOpacity(0.7),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: controller,
+                    focusNode: focusNode,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: theme.colorScheme.onSurface,
+                    ),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      hintText: isDevice
+                          ? l10n.devicePromptHint
+                          : l10n.chatPromptHint,
+                      hintStyle: TextStyle(
+                        fontSize: 11,
+                        color: theme.colorScheme.onSurface.withOpacity(0.4),
+                      ),
+                      filled: true,
+                      fillColor: theme.colorScheme.surfaceContainerHighest
+                          .withOpacity(0.35),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                    ),
+                    onSubmitted: (_) => isDevice
+                        ? _openAppFromPrompt()
+                        : _sendChatMessage(controller.text),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                SizedBox(
+                  width: 34,
+                  height: 34,
+                  child: FloatingActionButton(
+                    heroTag: isDevice ? 'device_send' : 'chat_send',
+                    mini: true,
+                    onPressed: isDevice
+                        ? _openAppFromPrompt
+                        : () => _sendChatMessage(controller.text),
+                    backgroundColor: _accentColor,
+                    child: Icon(
+                      isDevice ? Icons.open_in_new_rounded : Icons.send_rounded,
+                      size: 16,
+                      color: theme.colorScheme.onPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (isDevice) ...[
+              const SizedBox(height: 8),
+              if (_isLoadingApps)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Text(
+                    '${l10n.deviceControl}...',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                  ),
+                ),
+              if (_deviceStatus.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    _deviceStatus,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: theme.colorScheme.onSurface.withOpacity(0.85),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              Expanded(
+                child: ListView.builder(
+                  padding: EdgeInsets.zero,
+                  itemCount: _apps.length > 6 ? 6 : _apps.length,
+                  itemBuilder: (context, index) {
+                    final app = _apps[index];
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 1),
+                      child: InkWell(
+                        onTap: () => _openApp(app),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerHighest
+                                .withOpacity(0.25),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  app.appName,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: theme.colorScheme.onSurface,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Icon(
+                                Icons.open_in_new_rounded,
+                                size: 12,
+                                color: theme.colorScheme.onSurface.withOpacity(
+                                  0.7,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildHistoryOverlay() {
-    return Consumer<ChatHistoryService>(
-      builder: (context, historyService, _) {
+    return Consumer2<ChatHistoryService, SettingsService>(
+      builder: (context, historyService, settings, _) {
+        final l10n = AppLocalizer.fromCode(settings.language);
         final sessions = historyService.sessions;
+        final theme = Theme.of(context);
 
         return Container(
-          color: Colors.black.withOpacity(0.9),
+          color: theme.colorScheme.scrim.withOpacity(0.74),
           child: Column(
             children: [
-              const SizedBox(height: 50),
+              const SizedBox(height: 46),
               Text(
-                "CHAT HISTORY",
+                l10n.chatHistory,
                 style: TextStyle(
                   color: _accentColor,
                   fontSize: 12,
-                  letterSpacing: 2,
+                  letterSpacing: 1.4,
                 ),
               ),
               const SizedBox(height: 10),
               Expanded(
                 child: sessions.isEmpty
-                    ? const Center(
+                    ? Center(
                         child: Text(
-                          "No History",
-                          style: TextStyle(color: Colors.grey),
+                          l10n.noHistory,
+                          style: TextStyle(
+                            color: theme.colorScheme.onSurface.withOpacity(0.7),
+                          ),
                         ),
                       )
                     : ListView.builder(
@@ -426,24 +796,25 @@ class _HomeScreenState extends State<HomeScreen>
                                 decoration: BoxDecoration(
                                   color: isActive
                                       ? _accentColor.withOpacity(0.15)
-                                      : Colors.grey.shade900.withOpacity(0.4),
+                                      : theme.colorScheme.surface.withOpacity(
+                                          0.74,
+                                        ),
                                   borderRadius: BorderRadius.circular(12),
-                                  border: isActive
-                                      ? Border.all(
-                                          color: _accentColor.withOpacity(0.5),
-                                        )
-                                      : null,
+                                  border: Border.all(
+                                    color: isActive
+                                        ? _accentColor.withOpacity(0.5)
+                                        : theme.colorScheme.outline.withOpacity(
+                                            0.25,
+                                          ),
+                                  ),
                                 ),
                                 child: Row(
                                   children: [
                                     Expanded(
                                       child: Text(
-                                        TextCleaner.clean(
-                                          session.title,
-                                          disallowCjk: true,
-                                        ),
-                                        style: const TextStyle(
-                                          color: Colors.white,
+                                        TextCleaner.clean(session.title),
+                                        style: TextStyle(
+                                          color: theme.colorScheme.onSurface,
                                           fontSize: 12,
                                         ),
                                         maxLines: 1,
@@ -466,9 +837,12 @@ class _HomeScreenState extends State<HomeScreen>
               ),
               TextButton(
                 onPressed: () => setState(() => _showHistory = false),
-                child: const Text(
-                  "CLOSE",
-                  style: TextStyle(color: Colors.grey, fontSize: 11),
+                child: Text(
+                  l10n.close.toUpperCase(),
+                  style: TextStyle(
+                    color: theme.colorScheme.onSurface.withOpacity(0.7),
+                    fontSize: 11,
+                  ),
                 ),
               ),
               const SizedBox(height: 20),
@@ -479,15 +853,12 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  String _extractContentText(Content content, String languageCode) {
+  String _extractContentText(Content content) {
     final rawText = content.parts.map((part) {
       if (part is TextPart) return part.text;
       return part.toString();
     }).join();
-    final cleaned = TextCleaner.clean(
-      rawText,
-      disallowCjk: languageCode != 'zh',
-    );
+    final cleaned = TextCleaner.clean(rawText);
     return cleaned.isEmpty ? '...' : cleaned;
   }
 }
