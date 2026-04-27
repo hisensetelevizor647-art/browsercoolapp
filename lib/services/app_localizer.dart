@@ -18,107 +18,107 @@ class AppLocalizer {
   }
 
   String get tapToSpeak =>
-      _t(en: 'Tap to speak', uk: 'Natysni dlia holosu', sk: 'Klepni pre hlas');
+      _t(en: 'Tap to speak', uk: 'Натисни для голосу', sk: 'Klepni pre hlas');
 
   String get tapToWake => _t(
     en: 'Tap to wake',
-    uk: 'Natysni shchob uvimknuty',
+    uk: 'Натисни, щоб увімкнути',
     sk: 'Klepni na zobudenie',
   );
 
   String get settings =>
-      _t(en: 'Settings', uk: 'Nalashtuvannia', sk: 'Nastavenia');
+      _t(en: 'Settings', uk: 'Налаштування', sk: 'Nastavenia');
 
-  String get aiModel => _t(en: 'AI Model', uk: 'Model AI', sk: 'AI model');
+  String get aiModel => _t(en: 'AI Model', uk: 'Модель AI', sk: 'AI model');
 
   String get darkMode =>
-      _t(en: 'Dark Mode', uk: 'Temna tema', sk: 'Tmavy rezim');
+      _t(en: 'Dark Mode', uk: 'Темна тема', sk: 'Tmavy rezim');
 
-  String get language => _t(en: 'Language', uk: 'Mova', sk: 'Jazyk');
+  String get language => _t(en: 'Language', uk: 'Мова', sk: 'Jazyk');
 
-  String get back => _t(en: 'Back', uk: 'Nazad', sk: 'Spat');
+  String get back => _t(en: 'Back', uk: 'Назад', sk: 'Späť');
 
   String get chatHistory =>
-      _t(en: 'CHAT HISTORY', uk: 'ISTORIYA CHATU', sk: 'HISTORIA CHATU');
+      _t(en: 'CHAT HISTORY', uk: 'ІСТОРІЯ ЧАТУ', sk: 'HISTÓRIA CHATU');
 
   String get noHistory =>
-      _t(en: 'No History', uk: 'Istoriya porozhnia', sk: 'Bez historie');
+      _t(en: 'No History', uk: 'Історія порожня', sk: 'Bez histórie');
 
-  String get close => _t(en: 'Close', uk: 'Zakryty', sk: 'Zavriet');
+  String get close => _t(en: 'Close', uk: 'Закрити', sk: 'Zavrieť');
 
   String get newChat => _t(
     en: 'New chat started',
-    uk: 'Novyi chat stvoreno',
-    sk: 'Novy chat vytvoreny',
+    uk: 'Новий чат створено',
+    sk: 'Nový chat vytvorený',
   );
 
   String get micPermissionRequired => _t(
     en: 'Microphone permission required',
-    uk: 'Potreben dostup do mikrofona',
-    sk: 'Povolenie mikrofonu je potrebne',
+    uk: 'Потрібен доступ до мікрофона',
+    sk: 'Povolenie mikrofónu je potrebné',
   );
 
   String get listening =>
-      _t(en: 'Listening...', uk: 'Slukhayu...', sk: 'Pocuvam...');
+      _t(en: 'Listening...', uk: 'Слухаю...', sk: 'Počúvam...');
 
   String get thinking =>
-      _t(en: 'Thinking...', uk: 'Dumayu...', sk: 'Premyslam...');
+      _t(en: 'Thinking...', uk: 'Думаю...', sk: 'Premýšľam...');
 
   String get noResponse =>
-      _t(en: 'No response', uk: 'Bez vidpovidi', sk: 'Bez odpovede');
+      _t(en: 'No response', uk: 'Немає відповіді', sk: 'Bez odpovede');
 
   String get replyError => _t(
     en: 'Error while generating reply',
-    uk: 'Pomylka pid chas vidpovidi',
-    sk: 'Chyba pri generovani odpovede',
+    uk: 'Помилка під час відповіді',
+    sk: 'Chyba pri generovaní odpovede',
   );
 
   String get chatPromptHint => _t(
     en: 'Type message...',
-    uk: 'Vvedy povidomlennia...',
-    sk: 'Napis spravu...',
+    uk: 'Введи повідомлення...',
+    sk: 'Napíš správu...',
   );
 
   String get devicePromptHint => _t(
     en: 'Type app to open...',
-    uk: 'Vvedy nazvu dodatku...',
-    sk: 'Napis aplikaciu na otvorenie...',
+    uk: 'Введи назву додатка...',
+    sk: 'Napíš aplikáciu na otvorenie...',
   );
 
-  String get send => _t(en: 'Send', uk: 'Nadislaty', sk: 'Odoslat');
+  String get send => _t(en: 'Send', uk: 'Надіслати', sk: 'Odoslať');
 
-  String get open => _t(en: 'Open', uk: 'Vidkryty', sk: 'Otvorit');
+  String get open => _t(en: 'Open', uk: 'Відкрити', sk: 'Otvoriť');
 
   String get deviceControl => _t(
     en: 'Device control',
-    uk: 'Keruvannia pryistroyem',
-    sk: 'Ovladanie zariadenia',
+    uk: 'Керування пристроєм',
+    sk: 'Ovládanie zariadenia',
   );
 
   String get chatInput =>
-      _t(en: 'Chat input', uk: 'Vvedennia chatu', sk: 'Vstup chatu');
+      _t(en: 'Chat input', uk: 'Введення чату', sk: 'Vstup chatu');
 
   String appOpened(String appName) => _t(
     en: 'Opened: $appName',
-    uk: 'Vidkryto: $appName',
-    sk: 'Otvorene: $appName',
+    uk: 'Відкрито: $appName',
+    sk: 'Otvorené: $appName',
   );
 
   String appNotFound(String prompt) => _t(
     en: 'App not found: $prompt',
-    uk: 'Dodatok ne znaideno: $prompt',
-    sk: 'Aplikacia sa nenasla: $prompt',
+    uk: 'Додаток не знайдено: $prompt',
+    sk: 'Aplikácia sa nenašla: $prompt',
   );
 
   String appOpenFailed(String appName) => _t(
     en: 'Failed to open: $appName',
-    uk: 'Ne vdalosya vidkryty: $appName',
-    sk: 'Nepodarilo sa otvorit: $appName',
+    uk: 'Не вдалося відкрити: $appName',
+    sk: 'Nepodarilo sa otvoriť: $appName',
   );
 
   String get idleAssistantHint => _t(
     en: 'Tap mic to talk',
-    uk: 'Natysni mikrophon shchob hovoryty',
-    sk: 'Klepni na mikrofon a hovor',
+    uk: 'Натисни мікрофон, щоб говорити',
+    sk: 'Klepni na mikrofón a hovor',
   );
 }

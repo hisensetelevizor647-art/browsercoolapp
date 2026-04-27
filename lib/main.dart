@@ -49,20 +49,32 @@ class MyApp extends StatelessWidget {
         };
 
         return MaterialApp(
-          title: 'CA',
+          title: 'OleksandrAI Watch',
           theme: ThemeData(
             brightness: Brightness.light,
-            primarySwatch: Colors.blue,
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.blue.shade600,
+              brightness: Brightness.light,
+            ),
             visualDensity: VisualDensity.compact,
             useMaterial3: true,
             scaffoldBackgroundColor: Colors.grey.shade100,
+            floatingActionButtonTheme: const FloatingActionButtonThemeData(
+              shape: CircleBorder(),
+            ),
           ),
           darkTheme: ThemeData(
             brightness: Brightness.dark,
-            primarySwatch: Colors.blue,
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.blue.shade300,
+              brightness: Brightness.dark,
+            ),
             visualDensity: VisualDensity.compact,
             useMaterial3: true,
             scaffoldBackgroundColor: Colors.grey.shade900,
+            floatingActionButtonTheme: const FloatingActionButtonThemeData(
+              shape: CircleBorder(),
+            ),
           ),
           themeMode: settings.themeMode,
           initialRoute: initialRoute,

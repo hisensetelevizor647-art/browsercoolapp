@@ -3,7 +3,7 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
     <application
-        android:label="OleksandrAi"
+        android:label="OleksandrAI Watch"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 
@@ -76,7 +76,7 @@
             android:value="2" />
         <service
             android:name=".tile.MainTileService"
-            android:label="OleksandrAi"
+            android:label="OleksandrAI Watch"
             android:icon="@mipmap/ic_launcher"
             android:permission="com.google.android.wearable.permission.BIND_TILE_PROVIDER"
             android:exported="true">

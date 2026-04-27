@@ -128,7 +128,7 @@ class SettingsScreen extends StatelessWidget {
                           items:
                               [
                                 {'code': 'en', 'name': 'EN'},
-                                {'code': 'uk', 'name': 'UA'},
+                                {'code': 'uk', 'name': 'UK'},
                                 {'code': 'sk', 'name': 'SK'},
                               ].map((lang) {
                                 return DropdownMenuItem<String>(

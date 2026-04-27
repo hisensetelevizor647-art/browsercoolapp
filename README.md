@@ -1,16 +1,17 @@
-# ai_watch
+# OleksandrAI Watch
 
-A new Flutter project.
+Wear OS Flutter app with:
 
-## Getting Started
+- voice and text chat with Gemini
+- chat history and quick new-chat flow
+- device app control panel (open installed watch apps)
+- assistant mode with voice response
+- interface localization and theme switching
 
-This project is a starting point for a Flutter application.
+## Build APK (GitHub Actions)
 
-A few resources to get you started if this is your first Flutter project:
+Workflow file: `.github/workflows/build-watch-apk.yml`
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+Artifact name: `oleksandrai-watch-apk`
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Output file inside artifact: `app-release.apk`
