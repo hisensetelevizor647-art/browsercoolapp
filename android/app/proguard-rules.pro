@@ -1,0 +1,2 @@
+-dontwarn com.google.android.wearable.compat.**
+-keep class com.google.android.wearable.compat.** { *; }
