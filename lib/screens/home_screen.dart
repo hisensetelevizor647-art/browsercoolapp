@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_generative_ai/google_generative_ai.dart'
-    show Content, TextPart;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
@@ -33,6 +31,39 @@ class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   static final _accentColor = Colors.blueAccent.shade400;
   static final _accentDarkColor = Colors.blue.shade700;
+  static const Set<String> _appLaunchVerbs = {
+    'open',
+    'launch',
+    'start',
+    'run',
+    'відкрий',
+    'відкрити',
+    'відкрийте',
+    'запусти',
+    'запустити',
+    'запустіть',
+    'увімкни',
+    'включи',
+    'открой',
+    'открыть',
+    'запустить',
+  };
+  static const Set<String> _appCommandNoise = {
+    'app',
+    'application',
+    'the',
+    'a',
+    'please',
+    'додаток',
+    'додатки',
+    'програму',
+    'програма',
+    'будь',
+    'ласка',
+    'приложение',
+    'программу',
+    'пожалуйста',
+  };
 
   final stt.SpeechToText _speech = stt.SpeechToText();
   final TextEditingController _chatController = TextEditingController();
@@ -46,6 +77,7 @@ class _HomeScreenState extends State<HomeScreen>
   bool _isLoadingApps = false;
   String _deviceStatus = '';
   _PromptPanelMode _panelMode = _PromptPanelMode.none;
+  _PromptPanelMode _listeningMode = _PromptPanelMode.chat;
   List<WatchAppInfo> _apps = const [];
 
   late AnimationController _pulseController;
@@ -123,31 +155,78 @@ class _HomeScreenState extends State<HomeScreen>
     );
 
     if (!available) return;
+    final listeningMode = _panelMode == _PromptPanelMode.device
+        ? _PromptPanelMode.device
+        : _PromptPanelMode.chat;
+    if (listeningMode == _PromptPanelMode.device && _apps.isEmpty) {
+      await _loadApps();
+    }
 
     if (!mounted) return;
     setState(() {
       _isListening = true;
-      _chatController.clear();
-      _openPanel(_PromptPanelMode.chat, requestFocus: false);
+      _listeningMode = listeningMode;
+      _panelMode = listeningMode;
+      _showHistory = false;
+      if (listeningMode == _PromptPanelMode.device) {
+        _deviceController.clear();
+      } else {
+        _chatController.clear();
+      }
     });
     _speech.listen(
       onResult: (val) {
         if (!mounted) return;
         setState(() {
-          _chatController.text = val.recognizedWords;
+          if (_listeningMode == _PromptPanelMode.device) {
+            _deviceController.text = val.recognizedWords;
+          } else {
+            _chatController.text = val.recognizedWords;
+          }
         });
       },
     );
   }
 
-  void _stopListening() {
-    _speech.stop();
+  Future<void> _stopListening() async {
+    if (!_isListening) return;
+    await _speech.stop();
     if (!mounted) return;
+    final mode = _listeningMode;
+    final spoken = TextCleaner.clean(
+      mode == _PromptPanelMode.device
+          ? _deviceController.text
+          : _chatController.text,
+    );
     setState(() => _isListening = false);
-    final spoken = _chatController.text.trim();
-    if (spoken.isNotEmpty) {
-      _sendChatMessage(spoken);
+    if (spoken.isEmpty) return;
+
+    if (mode == _PromptPanelMode.device) {
+      final appQuery = _extractAppQueryFromCommand(spoken);
+      if (appQuery.isEmpty) return;
+      if (mounted) {
+        setState(() => _deviceController.text = appQuery);
+      }
+      await _openAppFromPrompt(appQuery);
+      return;
     }
+
+    if (_looksLikeAppLaunchCommand(spoken)) {
+      final appQuery = _extractAppQueryFromCommand(spoken);
+      if (appQuery.isNotEmpty) {
+        if (mounted) {
+          setState(() {
+            _panelMode = _PromptPanelMode.device;
+            _showHistory = false;
+            _deviceController.text = appQuery;
+          });
+        }
+        await _openAppFromPrompt(appQuery);
+        return;
+      }
+    }
+
+    await _sendChatMessage(spoken);
   }
 
   Future<void> _sendChatMessage(String text) async {
@@ -220,27 +299,45 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   WatchAppInfo? _findBestApp(String prompt) {
-    final query = TextCleaner.clean(prompt).toLowerCase();
+    final query = _normalizeForMatch(_extractAppQueryFromCommand(prompt));
     if (query.isEmpty) return null;
 
+    final compactQuery = query.replaceAll(' ', '');
     WatchAppInfo? bestApp;
     var bestScore = 0;
     final words = query.split(' ').where((w) => w.trim().isNotEmpty).toList();
 
     for (final app in _apps) {
-      final appName = app.appName.toLowerCase();
-      final packageName = app.packageName.toLowerCase();
+      final appName = _normalizeForMatch(app.appName);
+      final packageName = _normalizeForMatch(
+        app.packageName.replaceAll(RegExp(r'[._-]+'), ' '),
+      );
+      final compactAppName = appName.replaceAll(' ', '');
+      final compactPackage = packageName.replaceAll(' ', '');
       var score = 0;
+
       if (appName == query || packageName == query) {
+        score += 80;
+      }
+      if (compactAppName == compactQuery || compactPackage == compactQuery) {
         score += 50;
       }
+      if (appName.startsWith(query)) {
+        score += 28;
+      }
+      if (packageName.startsWith(query)) {
+        score += 18;
+      }
       if (appName.contains(query) || packageName.contains(query)) {
-        score += 20;
+        score += 22;
       }
       for (final word in words) {
         if (word.length < 2) continue;
-        if (appName.contains(word)) score += 4;
-        if (packageName.contains(word)) score += 2;
+        if (appName == word || packageName == word) score += 16;
+        if (appName.startsWith(word)) score += 7;
+        if (packageName.startsWith(word)) score += 4;
+        if (appName.contains(word)) score += 5;
+        if (packageName.contains(word)) score += 3;
       }
       if (score > bestScore) {
         bestScore = score;
@@ -248,7 +345,7 @@ class _HomeScreenState extends State<HomeScreen>
       }
     }
 
-    return bestScore > 0 ? bestApp : null;
+    return bestScore > 6 ? bestApp : null;
   }
 
   Future<void> _openApp(WatchAppInfo app) async {
@@ -266,17 +363,77 @@ class _HomeScreenState extends State<HomeScreen>
     });
   }
 
-  Future<void> _openAppFromPrompt() async {
+  Future<void> _openAppFromPrompt([String? promptOverride]) async {
     final l10n = _l10n(context);
-    final prompt = _deviceController.text;
+    final rawPrompt = TextCleaner.clean(promptOverride ?? _deviceController.text);
+    final prompt = _extractAppQueryFromCommand(rawPrompt);
+    if (prompt.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _deviceStatus = l10n.appNotFound(rawPrompt);
+      });
+      return;
+    }
+
+    if (_apps.isEmpty) {
+      await _loadApps();
+    }
+
     final match = _findBestApp(prompt);
     if (match == null) {
+      if (!mounted) return;
       setState(() {
-        _deviceStatus = l10n.appNotFound(prompt.trim());
+        _deviceStatus = l10n.appNotFound(prompt);
       });
       return;
     }
     await _openApp(match);
+  }
+
+  String _normalizeForMatch(String value) {
+    final cleaned = TextCleaner.clean(value).toLowerCase();
+    return cleaned
+        .replaceAll(
+          RegExp(r'[^0-9a-zа-яііїєґ._\-\s]+', caseSensitive: false),
+          ' ',
+        )
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  bool _looksLikeAppLaunchCommand(String prompt) {
+    final normalized = _normalizeForMatch(prompt);
+    if (normalized.isEmpty) return false;
+    final tokens = normalized.split(' ').where((w) => w.isNotEmpty).toList();
+    if (tokens.isEmpty) return false;
+    final limit = tokens.length > 4 ? 4 : tokens.length;
+    for (var i = 0; i < limit; i++) {
+      if (_appLaunchVerbs.contains(tokens[i])) return true;
+    }
+    return false;
+  }
+
+  String _extractAppQueryFromCommand(String prompt) {
+    final normalized = _normalizeForMatch(prompt);
+    if (normalized.isEmpty) return '';
+
+    final tokens = normalized.split(' ').where((w) => w.isNotEmpty).toList();
+    if (tokens.isEmpty) return '';
+
+    var start = 0;
+    final limit = tokens.length > 4 ? 4 : tokens.length;
+    for (var i = 0; i < limit; i++) {
+      if (_appLaunchVerbs.contains(tokens[i])) {
+        start = i + 1;
+        break;
+      }
+    }
+
+    final filtered = tokens
+        .skip(start)
+        .where((token) => !_appCommandNoise.contains(token))
+        .toList();
+    return filtered.join(' ').trim();
   }
 
   @override
@@ -853,12 +1010,8 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  String _extractContentText(Content content) {
-    final rawText = content.parts.map((part) {
-      if (part is TextPart) return part.text;
-      return part.toString();
-    }).join();
-    final cleaned = TextCleaner.clean(rawText);
+  String _extractContentText(ChatMessage content) {
+    final cleaned = TextCleaner.clean(content.content);
     return cleaned.isEmpty ? '...' : cleaned;
   }
 }

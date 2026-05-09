@@ -2,7 +2,7 @@
 
 Wear OS Flutter app with:
 
-- voice and text chat with Gemini
+- voice and text chat with NVIDIA-hosted models (AFIE 2.5 / AFIE 3.0)
 - chat history and quick new-chat flow
 - device app control panel (open installed watch apps)
 - assistant mode with voice response

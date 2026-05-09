@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsService with ChangeNotifier {
-  static const String defaultModel = 'gemini-2.5-flash';
+  static const String defaultModel = 'abacusai/dracarys-llama-3.1-70b-instruct';
 
   SharedPreferences? _prefs;
 
@@ -16,8 +16,8 @@ class SettingsService with ChangeNotifier {
 
   // Available models
   static const List<Map<String, String>> availableModels = [
-    {'id': 'gemini-3.1-flash-lite-preview', 'name': 'fast 3.0'},
-    {'id': defaultModel, 'name': '2.5 fast'},
+    {'id': defaultModel, 'name': 'AFIE 2.5'},
+    {'id': 'bytedance/seed-oss-36b-instruct', 'name': 'AFIE 3.0'},
   ];
 
   // Display name mapping logic

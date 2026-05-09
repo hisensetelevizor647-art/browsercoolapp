@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
@@ -23,14 +22,14 @@ class AssistantScreen extends StatefulWidget {
 
 class _AssistantScreenState extends State<AssistantScreen>
     with SingleTickerProviderStateMixin {
-  static const String _assistantModel = 'gemini-3.1-flash-lite-preview';
   static final _accentColor = Colors.blueAccent.shade400;
 
   final stt.SpeechToText _speech = stt.SpeechToText();
   final TtsService _ttsService = TtsService();
+  final TextEditingController _promptController = TextEditingController();
+  final FocusNode _promptFocusNode = FocusNode();
 
   late final AnimationController _orbitController;
-  late final GenerativeModel _assistantModelClient;
 
   bool _isListening = false;
   bool _subtitlesEnabled = false;
@@ -48,10 +47,6 @@ class _AssistantScreenState extends State<AssistantScreen>
   @override
   void initState() {
     super.initState();
-    _assistantModelClient = GenerativeModel(
-      model: _assistantModel,
-      apiKey: GeminiService.apiKey,
-    );
     _orbitController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 6),
@@ -73,6 +68,8 @@ class _AssistantScreenState extends State<AssistantScreen>
     _orbitController.dispose();
     _speech.stop();
     _ttsService.stop();
+    _promptController.dispose();
+    _promptFocusNode.dispose();
     super.dispose();
   }
 
@@ -90,10 +87,7 @@ class _AssistantScreenState extends State<AssistantScreen>
     final available = await _speech.initialize(
       onStatus: (status) {
         if (status == 'notListening' && _isListening) {
-          setState(() {
-            _isListening = false;
-          });
-          _askAssistant(_spokenText);
+          _stopListening();
         }
       },
       onError: (_) {
@@ -109,6 +103,7 @@ class _AssistantScreenState extends State<AssistantScreen>
     setState(() {
       _isListening = true;
       _spokenText = '';
+      _promptController.clear();
       _replyText = l10n.listening;
     });
 
@@ -117,22 +112,35 @@ class _AssistantScreenState extends State<AssistantScreen>
         if (!mounted) return;
         setState(() {
           _spokenText = value.recognizedWords;
+          _promptController.text = value.recognizedWords;
         });
       },
     );
   }
 
-  void _stopListening() {
-    _speech.stop();
+  Future<void> _stopListening() async {
+    if (!_isListening) return;
+    await _speech.stop();
+    if (!mounted) return;
     setState(() {
       _isListening = false;
     });
-    _askAssistant(_spokenText);
+    final prompt = TextCleaner.clean(_promptController.text);
+    if (prompt.isNotEmpty) {
+      await _askAssistant(prompt);
+    }
+  }
+
+  Future<void> _submitTypedPrompt() async {
+    final prompt = TextCleaner.clean(_promptController.text);
+    if (prompt.isEmpty) return;
+    await _askAssistant(prompt);
   }
 
   Future<void> _askAssistant(String prompt) async {
     final l10n = _l10n();
     final settings = Provider.of<SettingsService>(context, listen: false);
+    final service = Provider.of<GeminiService>(context, listen: false);
     final cleanPrompt = TextCleaner.clean(prompt);
     if (cleanPrompt.isEmpty) {
       if (!mounted) return;
@@ -147,11 +155,11 @@ class _AssistantScreenState extends State<AssistantScreen>
     });
 
     try {
-      final response = await _assistantModelClient.generateContent([
-        Content.text(GeminiService.autoLanguageInstruction),
-        Content.text(cleanPrompt),
-      ]);
-      final answer = TextCleaner.clean(response.text ?? '');
+      final response = await service.askSingleMessage(
+        cleanPrompt,
+        modelName: settings.model,
+      );
+      final answer = TextCleaner.clean(response);
       final finalAnswer = answer.isEmpty ? l10n.noResponse : answer;
 
       if (_subtitlesEnabled) {
@@ -163,6 +171,7 @@ class _AssistantScreenState extends State<AssistantScreen>
 
       if (!mounted) return;
       setState(() {
+        _promptController.clear();
         _replyText = finalAnswer;
       });
     } catch (_) {
@@ -185,10 +194,9 @@ class _AssistantScreenState extends State<AssistantScreen>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final modelName = Provider.of<SettingsService>(
-      context,
-      listen: false,
-    ).modelDisplayName.toUpperCase();
+    final settings = Provider.of<SettingsService>(context, listen: false);
+    final modelName = settings.modelDisplayName.toUpperCase();
+    final l10n = AppLocalizer.fromCode(settings.language);
     final onSurface = theme.colorScheme.onSurface;
 
     return Scaffold(
@@ -242,6 +250,8 @@ class _AssistantScreenState extends State<AssistantScreen>
                   ),
                 ),
               ),
+              const SizedBox(height: 8),
+              _buildPromptInput(theme, l10n),
               const Spacer(),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -284,6 +294,58 @@ class _AssistantScreenState extends State<AssistantScreen>
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildPromptInput(ThemeData theme, AppLocalizer l10n) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface.withOpacity(0.85),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _promptController,
+              focusNode: _promptFocusNode,
+              style: TextStyle(
+                fontSize: 11,
+                color: theme.colorScheme.onSurface,
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: l10n.chatPromptHint,
+                hintStyle: TextStyle(
+                  fontSize: 10,
+                  color: theme.colorScheme.onSurface.withOpacity(0.5),
+                ),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 4),
+              ),
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) => _submitTypedPrompt(),
+            ),
+          ),
+          SizedBox(
+            width: 30,
+            height: 30,
+            child: FloatingActionButton(
+              heroTag: 'assistant_send',
+              mini: true,
+              backgroundColor: _accentColor,
+              onPressed: _submitTypedPrompt,
+              child: Icon(
+                Icons.send_rounded,
+                size: 14,
+                color: theme.colorScheme.onPrimary,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
