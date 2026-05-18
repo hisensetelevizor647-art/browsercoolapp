@@ -121,4 +121,33 @@ class AppLocalizer {
     uk: 'Натисни мікрофон, щоб говорити',
     sk: 'Klepni na mikrofón a hovor',
   );
+  String thinkingForSeconds(int seconds) => _t(
+    en: 'Thinking: ${seconds}s',
+    uk: 'Thinking: ${seconds}s',
+    sk: 'Thinking: ${seconds}s',
+  );
+
+  String get superVoiceMode => _t(
+    en: 'Super Voice Mode',
+    uk: 'Super Voice Mode',
+    sk: 'Super Voice Mode',
+  );
+
+  String get setDefaultAssistant => _t(
+    en: 'Set OleksandrAI as assistant',
+    uk: 'Set OleksandrAI as assistant',
+    sk: 'Set OleksandrAI as assistant',
+  );
+
+  String get assistantSettingsOpened => _t(
+    en: 'Assistant settings opened',
+    uk: 'Assistant settings opened',
+    sk: 'Assistant settings opened',
+  );
+
+  String get assistantSettingsUnavailable => _t(
+    en: 'Assistant settings unavailable',
+    uk: 'Assistant settings unavailable',
+    sk: 'Assistant settings unavailable',
+  );
 }

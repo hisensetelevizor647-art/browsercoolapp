@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'text_cleaner.dart';
+import 'watch_assistant_service.dart';
 
 class ChatMessage {
   const ChatMessage({required this.role, required this.content});
@@ -68,10 +70,17 @@ class GeminiService with ChangeNotifier {
   };
 
   final List<ChatMessage> _chatHistory = [];
+  final WatchAssistantService _watchAssistantService = WatchAssistantService();
+
   String _modelName = _fallbackModelId;
+  int _activeThinkingJobs = 0;
+  DateTime? _thinkingStartedAt;
+  Timer? _thinkingTicker;
+  int _thinkingSeconds = 0;
 
   bool _isLoading = false;
   bool get isLoading => _isLoading;
+  int get thinkingSeconds => _thinkingSeconds;
 
   List<ChatMessage> get chatHistory => List.unmodifiable(_chatHistory);
 
@@ -93,8 +102,7 @@ class GeminiService with ChangeNotifier {
     final trimmed = TextCleaner.clean(message);
     if (trimmed.isEmpty) return null;
 
-    _isLoading = true;
-    notifyListeners();
+    _startThinking();
 
     try {
       _chatHistory.add(ChatMessage(role: 'user', content: trimmed));
@@ -112,18 +120,22 @@ class GeminiService with ChangeNotifier {
     } catch (e) {
       return 'Error: $e';
     } finally {
-      _isLoading = false;
-      notifyListeners();
+      _stopThinking();
     }
   }
 
   Future<String> askSingleMessage(String prompt, {String? modelName}) async {
     final cleanedPrompt = TextCleaner.clean(prompt);
     if (cleanedPrompt.isEmpty) return '';
-    return _requestCompletion(
-      modelName: _resolveModelName(modelName ?? _modelName),
-      history: [ChatMessage(role: 'user', content: cleanedPrompt)],
-    );
+    _startThinking();
+    try {
+      return await _requestCompletion(
+        modelName: _resolveModelName(modelName ?? _modelName),
+        history: [ChatMessage(role: 'user', content: cleanedPrompt)],
+      );
+    } finally {
+      _stopThinking();
+    }
   }
 
   Future<String> _requestCompletion({
@@ -253,5 +265,51 @@ class GeminiService with ChangeNotifier {
   void startNewChat() {
     _chatHistory.clear();
     notifyListeners();
+  }
+
+  void _startThinking() {
+    _activeThinkingJobs += 1;
+    if (_activeThinkingJobs > 1) return;
+
+    _isLoading = true;
+    _thinkingStartedAt = DateTime.now();
+    _thinkingSeconds = 0;
+    notifyListeners();
+
+    _thinkingTicker?.cancel();
+    _thinkingTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      final startedAt = _thinkingStartedAt;
+      if (startedAt == null) return;
+      final seconds = DateTime.now().difference(startedAt).inSeconds;
+      if (seconds != _thinkingSeconds) {
+        _thinkingSeconds = seconds;
+        notifyListeners();
+      }
+    });
+
+    _watchAssistantService.startThinkingStatus(label: 'Thinking...');
+  }
+
+  void _stopThinking() {
+    if (_activeThinkingJobs > 0) {
+      _activeThinkingJobs -= 1;
+    }
+    if (_activeThinkingJobs > 0) return;
+
+    _thinkingTicker?.cancel();
+    _thinkingTicker = null;
+    _thinkingStartedAt = null;
+    _thinkingSeconds = 0;
+    _isLoading = false;
+    notifyListeners();
+
+    _watchAssistantService.stopThinkingStatus();
+  }
+
+  @override
+  void dispose() {
+    _thinkingTicker?.cancel();
+    _watchAssistantService.stopThinkingStatus();
+    super.dispose();
   }
 }

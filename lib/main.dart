@@ -7,6 +7,7 @@ import 'services/chat_history_service.dart';
 import 'services/app_localizer.dart';
 import 'screens/assistant_screen.dart';
 import 'screens/home_screen.dart';
+import 'theme/watch_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -50,32 +51,8 @@ class MyApp extends StatelessWidget {
 
         return MaterialApp(
           title: 'OleksandrAI Watch',
-          theme: ThemeData(
-            brightness: Brightness.light,
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.blue.shade600,
-              brightness: Brightness.light,
-            ),
-            visualDensity: VisualDensity.compact,
-            useMaterial3: true,
-            scaffoldBackgroundColor: Colors.grey.shade100,
-            floatingActionButtonTheme: const FloatingActionButtonThemeData(
-              shape: CircleBorder(),
-            ),
-          ),
-          darkTheme: ThemeData(
-            brightness: Brightness.dark,
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.blue.shade300,
-              brightness: Brightness.dark,
-            ),
-            visualDensity: VisualDensity.compact,
-            useMaterial3: true,
-            scaffoldBackgroundColor: Colors.grey.shade900,
-            floatingActionButtonTheme: const FloatingActionButtonThemeData(
-              shape: CircleBorder(),
-            ),
-          ),
+          theme: WatchTheme.light(),
+          darkTheme: WatchTheme.dark(),
           themeMode: settings.themeMode,
           initialRoute: initialRoute,
           routes: {
@@ -130,37 +107,77 @@ class AmbientWatchFace extends StatelessWidget {
       builder: (context, settings, _) {
         final l10n = AppLocalizer.fromCode(settings.language);
         final theme = Theme.of(context);
+        final isDark = theme.brightness == Brightness.dark;
         return Scaffold(
           backgroundColor: theme.scaffoldBackgroundColor,
-          body: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 64,
-                  height: 64,
+          body: Stack(
+            children: [
+              Positioned.fill(
+                child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.surface,
-                    borderRadius: BorderRadius.circular(32),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(32),
-                    child: Image.asset(
-                      'assets/icon/app_icon.png',
-                      fit: BoxFit.cover,
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.blue.shade500.withOpacity(isDark ? 0.34 : 0.22),
+                        Colors.red.shade500.withOpacity(isDark ? 0.3 : 0.2),
+                        Colors.yellow.shade600.withOpacity(
+                          isDark ? 0.24 : 0.16,
+                        ),
+                        Colors.green.shade500.withOpacity(isDark ? 0.3 : 0.2),
+                      ],
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  l10n.tapToWake,
-                  style: TextStyle(
-                    color: theme.colorScheme.onSurface.withOpacity(0.65),
-                    fontSize: 11,
-                  ),
+              ),
+              Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 68,
+                      height: 68,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.blue.shade500.withOpacity(0.28),
+                            Colors.red.shade500.withOpacity(0.24),
+                            Colors.yellow.shade600.withOpacity(0.2),
+                            Colors.green.shade500.withOpacity(0.24),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(34),
+                        boxShadow: [
+                          BoxShadow(
+                            color: theme.colorScheme.primary.withOpacity(0.25),
+                            blurRadius: 18,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(5),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(30),
+                          child: Image.asset(
+                            'assets/icon/app_icon.png',
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      l10n.tapToWake,
+                      style: TextStyle(
+                        color: theme.colorScheme.onSurface.withOpacity(0.68),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         );
       },

@@ -3,6 +3,7 @@ package com.example.ai_watch
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -25,6 +26,12 @@ open class MainActivity : FlutterActivity() {
                         result.success(openApp(packageName))
                     }
                 }
+                "startThinkingStatus" -> {
+                    val label = call.argument<String>("label") ?: "Thinking..."
+                    result.success(startThinkingStatus(label))
+                }
+                "stopThinkingStatus" -> result.success(stopThinkingStatus())
+                "openAssistantSettings" -> result.success(openAssistantSettings())
                 else -> result.notImplemented()
             }
         }
@@ -78,5 +85,60 @@ open class MainActivity : FlutterActivity() {
         } catch (_: Exception) {
             false
         }
+    }
+
+    private fun startThinkingStatus(label: String): Boolean {
+        return try {
+            val intent = Intent(this, ThinkingStatusService::class.java).apply {
+                action = ThinkingStatusService.ACTION_START
+                putExtra(ThinkingStatusService.EXTRA_LABEL, label)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                @Suppress("DEPRECATION")
+                startService(intent)
+            }
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun stopThinkingStatus(): Boolean {
+        return try {
+            val intent = Intent(this, ThinkingStatusService::class.java).apply {
+                action = ThinkingStatusService.ACTION_STOP
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                @Suppress("DEPRECATION")
+                startService(intent)
+            }
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun openAssistantSettings(): Boolean {
+        val candidates = listOf(
+            Intent(Settings.ACTION_VOICE_INPUT_SETTINGS),
+            Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS),
+            Intent(Settings.ACTION_SETTINGS),
+        )
+
+        for (intent in candidates) {
+            if (intent.resolveActivity(packageManager) == null) continue
+            try {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(intent)
+                return true
+            } catch (_: Exception) {
+                continue
+            }
+        }
+        return false
     }
 }

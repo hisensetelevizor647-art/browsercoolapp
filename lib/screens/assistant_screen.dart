@@ -22,8 +22,6 @@ class AssistantScreen extends StatefulWidget {
 
 class _AssistantScreenState extends State<AssistantScreen>
     with SingleTickerProviderStateMixin {
-  static final _accentColor = Colors.blueAccent.shade400;
-
   final stt.SpeechToText _speech = stt.SpeechToText();
   final TtsService _ttsService = TtsService();
   final TextEditingController _promptController = TextEditingController();
@@ -43,6 +41,10 @@ class _AssistantScreenState extends State<AssistantScreen>
     ).language;
     return AppLocalizer.fromCode(language);
   }
+
+  dynamic _accentColor(ThemeData theme) => theme.colorScheme.primary;
+
+  dynamic _accentAltColor(ThemeData theme) => theme.colorScheme.secondary;
 
   @override
   void initState() {
@@ -194,117 +196,234 @@ class _AssistantScreenState extends State<AssistantScreen>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final gemini = Provider.of<GeminiService>(context);
     final settings = Provider.of<SettingsService>(context, listen: false);
     final modelName = settings.modelDisplayName.toUpperCase();
     final l10n = AppLocalizer.fromCode(settings.language);
     final onSurface = theme.colorScheme.onSurface;
+    final accent = _accentColor(theme);
+    final isThinking = gemini.isLoading;
+    final thinkingPulse =
+        0.55 + (math.sin(_orbitController.value * 2 * math.pi).abs() * 0.45);
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      body: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            widget.isRound ? 20 : 12,
-            widget.isRound ? 18 : 12,
-            widget.isRound ? 20 : 12,
-            widget.isRound ? 18 : 12,
-          ),
-          child: Column(
-            children: [
-              Text(
-                modelName,
-                style: TextStyle(
-                  color: _accentColor.withOpacity(0.7),
-                  fontSize: 12,
-                  letterSpacing: 1.2,
-                ),
+      body: Stack(
+        children: [
+          _buildBackdrop(theme),
+          SafeArea(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                widget.isRound ? 20 : 12,
+                widget.isRound ? 18 : 12,
+                widget.isRound ? 20 : 12,
+                widget.isRound ? 18 : 12,
               ),
-              const Spacer(),
-              _buildAnimatedLogo(),
-              const SizedBox(height: 12),
-              Container(
-                constraints: const BoxConstraints(minHeight: 50, maxHeight: 80),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surface.withOpacity(0.82),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: theme.colorScheme.outline.withOpacity(0.2),
-                    width: 0.5,
-                  ),
-                ),
-                child: SingleChildScrollView(
-                  child: Text(
-                    _subtitlesEnabled
-                        ? _replyText
-                        : (_isListening ? _spokenText : _replyText),
+              child: Column(
+                children: [
+                  Text(
+                    modelName,
                     style: TextStyle(
+                      color: accent.withOpacity(0.84),
                       fontSize: 11,
-                      color: _isListening
-                          ? Colors.redAccent
-                          : onSurface.withOpacity(0.85),
+                      letterSpacing: 1.3,
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              _buildPromptInput(theme, l10n),
-              const Spacer(),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _buildSideButton(
-                    onPressed: _toggleReplyMode,
-                    icon: _subtitlesEnabled
-                        ? Icons.subtitles_rounded
-                        : Icons.volume_up_rounded,
-                    color: _subtitlesEnabled ? Colors.amber : _accentColor,
-                  ),
-                  const SizedBox(width: 12),
-                  SizedBox(
-                    width: 56,
-                    height: 56,
-                    child: FloatingActionButton(
-                      elevation: 4,
-                      onPressed: _isListening
-                          ? _stopListening
-                          : _startListening,
-                      backgroundColor: _isListening ? Colors.red : _accentColor,
-                      shape: const CircleBorder(),
-                      child: Icon(
-                        _isListening
-                            ? Icons.mic_off_rounded
-                            : Icons.mic_rounded,
-                        size: 28,
-                        color: theme.colorScheme.onPrimary,
+                  if (isThinking) ...[
+                    const SizedBox(height: 7),
+                    Opacity(
+                      opacity: thinkingPulse,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surface.withOpacity(0.86),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: accent.withOpacity(0.45),
+                            width: 0.8,
+                          ),
+                        ),
+                        child: Text(
+                          l10n.thinkingForSeconds(gemini.thinkingSeconds),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: theme.colorScheme.onSurface.withOpacity(
+                              0.86,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                  const Spacer(),
+                  _buildAnimatedLogo(),
+                  const SizedBox(height: 12),
+                  Container(
+                    constraints: const BoxConstraints(
+                      minHeight: 50,
+                      maxHeight: 80,
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          theme.colorScheme.surface.withOpacity(0.94),
+                          theme.colorScheme.surfaceContainerHighest.withOpacity(
+                            0.36,
+                          ),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: theme.colorScheme.outline.withOpacity(0.26),
+                        width: 0.6,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: theme.shadowColor.withOpacity(0.14),
+                          blurRadius: 14,
+                        ),
+                      ],
+                    ),
+                    child: SingleChildScrollView(
+                      child: Text(
+                        _subtitlesEnabled
+                            ? _replyText
+                            : (_isListening ? _spokenText : _replyText),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: _isListening
+                              ? Colors.redAccent
+                              : onSurface.withOpacity(0.88),
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  _buildSideButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: Icons.close_rounded,
-                    color: onSurface.withOpacity(0.7),
+                  const SizedBox(height: 8),
+                  _buildPromptInput(theme, l10n),
+                  const Spacer(),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildSideButton(
+                        onPressed: _toggleReplyMode,
+                        icon: _subtitlesEnabled
+                            ? Icons.subtitles_rounded
+                            : Icons.volume_up_rounded,
+                        color: _subtitlesEnabled ? Colors.amber : accent,
+                      ),
+                      const SizedBox(width: 12),
+                      SizedBox(
+                        width: 56,
+                        height: 56,
+                        child: FloatingActionButton(
+                          elevation: 4,
+                          onPressed: _isListening
+                              ? _stopListening
+                              : _startListening,
+                          backgroundColor: _isListening ? Colors.red : accent,
+                          shape: const CircleBorder(),
+                          child: Icon(
+                            _isListening
+                                ? Icons.mic_off_rounded
+                                : Icons.mic_rounded,
+                            size: 28,
+                            color: theme.colorScheme.onPrimary,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      _buildSideButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: Icons.close_rounded,
+                        color: onSurface.withOpacity(0.72),
+                      ),
+                    ],
                   ),
                 ],
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBackdrop(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    final accent = _accentColor(theme);
+    final accentAlt = _accentAltColor(theme);
+
+    return Positioned.fill(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.blue.shade500.withOpacity(isDark ? 0.34 : 0.22),
+              Colors.red.shade500.withOpacity(isDark ? 0.3 : 0.2),
+              Colors.yellow.shade600.withOpacity(isDark ? 0.24 : 0.16),
+              Colors.green.shade500.withOpacity(isDark ? 0.3 : 0.2),
             ],
           ),
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              top: -84,
+              left: -42,
+              child: _buildGlow(accent.withOpacity(isDark ? 0.26 : 0.18), 190),
+            ),
+            Positioned(
+              bottom: -88,
+              right: -48,
+              child: _buildGlow(
+                accentAlt.withOpacity(isDark ? 0.24 : 0.14),
+                220,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGlow(dynamic color, double size) {
+    return IgnorePointer(
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(color: color, blurRadius: size * 0.36, spreadRadius: 8),
+          ],
         ),
       ),
     );
   }
 
   Widget _buildPromptInput(ThemeData theme, AppLocalizer l10n) {
+    final accent = _accentColor(theme);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface.withOpacity(0.85),
+        gradient: LinearGradient(
+          colors: [
+            theme.colorScheme.surface.withOpacity(0.95),
+            theme.colorScheme.surfaceContainerHighest.withOpacity(0.38),
+          ],
+        ),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.2)),
+        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.26)),
       ),
       child: Row(
         children: [
@@ -319,10 +438,6 @@ class _AssistantScreenState extends State<AssistantScreen>
               decoration: InputDecoration(
                 isDense: true,
                 hintText: l10n.chatPromptHint,
-                hintStyle: TextStyle(
-                  fontSize: 10,
-                  color: theme.colorScheme.onSurface.withOpacity(0.5),
-                ),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(vertical: 4),
               ),
@@ -336,7 +451,7 @@ class _AssistantScreenState extends State<AssistantScreen>
             child: FloatingActionButton(
               heroTag: 'assistant_send',
               mini: true,
-              backgroundColor: _accentColor,
+              backgroundColor: accent,
               onPressed: _submitTypedPrompt,
               child: Icon(
                 Icons.send_rounded,
@@ -359,8 +474,14 @@ class _AssistantScreenState extends State<AssistantScreen>
       width: 36,
       height: 36,
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
+        gradient: LinearGradient(
+          colors: [color.withOpacity(0.18), color.withOpacity(0.08)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         shape: BoxShape.circle,
+        border: Border.all(color: color.withOpacity(0.3)),
+        boxShadow: [BoxShadow(color: color.withOpacity(0.12), blurRadius: 8)],
       ),
       child: IconButton(
         onPressed: onPressed,
@@ -372,6 +493,7 @@ class _AssistantScreenState extends State<AssistantScreen>
 
   Widget _buildAnimatedLogo() {
     final theme = Theme.of(context);
+    final accent = _accentColor(theme);
     return SizedBox(
       width: 140,
       height: 140,
@@ -410,7 +532,7 @@ class _AssistantScreenState extends State<AssistantScreen>
                   borderRadius: BorderRadius.circular(40),
                   boxShadow: [
                     BoxShadow(
-                      color: _accentColor.withOpacity(0.3),
+                      color: accent.withOpacity(0.35),
                       blurRadius: 15,
                       spreadRadius: 2,
                     ),
@@ -431,6 +553,8 @@ class _AssistantScreenState extends State<AssistantScreen>
   }
 
   Widget _buildOrbitDot(int index, double radius, double size) {
+    final theme = Theme.of(context);
+    final accent = _accentColor(theme);
     final speed = 1.0 + (index * 0.2);
     final angleOffset = (2 * math.pi / 3) * index;
     final angle = (_orbitController.value * 2 * math.pi * speed) + angleOffset;
@@ -445,13 +569,11 @@ class _AssistantScreenState extends State<AssistantScreen>
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: _isListening ? Colors.redAccent : _accentColor,
+          color: _isListening ? Colors.redAccent : accent,
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: (_isListening ? Colors.red : _accentColor).withOpacity(
-                0.5,
-              ),
+              color: (_isListening ? Colors.red : accent).withOpacity(0.5),
               blurRadius: 10,
             ),
           ],

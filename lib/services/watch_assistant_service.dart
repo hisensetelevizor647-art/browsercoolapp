@@ -40,4 +40,21 @@ class WatchAssistantService {
     });
     return result ?? false;
   }
+
+  Future<bool> startThinkingStatus({String label = 'Thinking...'}) async {
+    final result = await _channel.invokeMethod<bool>('startThinkingStatus', {
+      'label': label,
+    });
+    return result ?? false;
+  }
+
+  Future<bool> stopThinkingStatus() async {
+    final result = await _channel.invokeMethod<bool>('stopThinkingStatus');
+    return result ?? false;
+  }
+
+  Future<bool> openAssistantSettings() async {
+    final result = await _channel.invokeMethod<bool>('openAssistantSettings');
+    return result ?? false;
+  }
 }

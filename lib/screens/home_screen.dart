@@ -29,40 +29,17 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
-  static final _accentColor = Colors.blueAccent.shade400;
-  static final _accentDarkColor = Colors.blue.shade700;
-  static const Set<String> _appLaunchVerbs = {
-    'open',
-    'launch',
-    'start',
-    'run',
-    'відкрий',
-    'відкрити',
-    'відкрийте',
-    'запусти',
-    'запустити',
-    'запустіть',
-    'увімкни',
-    'включи',
-    'открой',
-    'открыть',
-    'запустить',
-  };
+  static const Set<String> _appLaunchVerbs = {'open', 'launch', 'start', 'run'};
   static const Set<String> _appCommandNoise = {
     'app',
     'application',
     'the',
     'a',
     'please',
-    'додаток',
-    'додатки',
-    'програму',
-    'програма',
-    'будь',
-    'ласка',
-    'приложение',
-    'программу',
-    'пожалуйста',
+    'assistant',
+    'voice',
+    'super',
+    'mode',
   };
 
   final stt.SpeechToText _speech = stt.SpeechToText();
@@ -75,7 +52,9 @@ class _HomeScreenState extends State<HomeScreen>
   bool _isListening = false;
   bool _showHistory = false;
   bool _isLoadingApps = false;
+  bool _isSuperVoiceMode = false;
   String _deviceStatus = '';
+  String _superVoiceStatus = '';
   _PromptPanelMode _panelMode = _PromptPanelMode.none;
   _PromptPanelMode _listeningMode = _PromptPanelMode.chat;
   List<WatchAppInfo> _apps = const [];
@@ -115,6 +94,10 @@ class _HomeScreenState extends State<HomeScreen>
     return AppLocalizer.fromCode(language);
   }
 
+  dynamic _accentColor(ThemeData theme) => theme.colorScheme.primary;
+
+  dynamic _accentDarkColor(ThemeData theme) => theme.colorScheme.secondary;
+
   Future<void> _startNewChat() async {
     final l10n = _l10n(context);
     final gemini = Provider.of<GeminiService>(context, listen: false);
@@ -125,9 +108,11 @@ class _HomeScreenState extends State<HomeScreen>
     setState(() {
       _panelMode = _PromptPanelMode.none;
       _showHistory = false;
+      _isSuperVoiceMode = false;
       _chatController.clear();
       _deviceController.clear();
       _deviceStatus = l10n.newChat;
+      _superVoiceStatus = '';
     });
   }
 
@@ -168,10 +153,14 @@ class _HomeScreenState extends State<HomeScreen>
       _listeningMode = listeningMode;
       _panelMode = listeningMode;
       _showHistory = false;
+      if (listeningMode != _PromptPanelMode.device) {
+        _isSuperVoiceMode = false;
+      }
       if (listeningMode == _PromptPanelMode.device) {
         _deviceController.clear();
       } else {
         _chatController.clear();
+        _superVoiceStatus = '';
       }
     });
     _speech.listen(
@@ -188,26 +177,75 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  Future<void> _startSuperVoiceMode() async {
+    if (_isListening && _listeningMode == _PromptPanelMode.device) {
+      await _stopListening();
+      return;
+    }
+
+    if (_apps.isEmpty) {
+      await _loadApps();
+    }
+    if (!mounted) return;
+
+    final l10n = _l10n(context);
+    setState(() {
+      _isSuperVoiceMode = true;
+      _superVoiceStatus = l10n.superVoiceMode;
+      _panelMode = _PromptPanelMode.device;
+      _showHistory = false;
+    });
+
+    await _startListening();
+  }
+
   Future<void> _stopListening() async {
     if (!_isListening) return;
     await _speech.stop();
     if (!mounted) return;
+
+    final l10n = _l10n(context);
     final mode = _listeningMode;
+    final wasSuperVoice = _isSuperVoiceMode && mode == _PromptPanelMode.device;
     final spoken = TextCleaner.clean(
       mode == _PromptPanelMode.device
           ? _deviceController.text
           : _chatController.text,
     );
     setState(() => _isListening = false);
-    if (spoken.isEmpty) return;
+    if (spoken.isEmpty) {
+      if (wasSuperVoice) {
+        setState(() {
+          _isSuperVoiceMode = false;
+          _superVoiceStatus = l10n.superVoiceMode;
+        });
+      }
+      return;
+    }
 
     if (mode == _PromptPanelMode.device) {
       final appQuery = _extractAppQueryFromCommand(spoken);
-      if (appQuery.isEmpty) return;
+      if (appQuery.isEmpty) {
+        if (wasSuperVoice) {
+          setState(() {
+            _isSuperVoiceMode = false;
+            _superVoiceStatus = l10n.appNotFound(spoken);
+          });
+        }
+        return;
+      }
       if (mounted) {
         setState(() => _deviceController.text = appQuery);
       }
       await _openAppFromPrompt(appQuery);
+      if (wasSuperVoice && mounted) {
+        setState(() {
+          _isSuperVoiceMode = false;
+          _superVoiceStatus = _deviceStatus.isNotEmpty
+              ? _deviceStatus
+              : l10n.appNotFound(appQuery);
+        });
+      }
       return;
     }
 
@@ -280,6 +318,7 @@ class _HomeScreenState extends State<HomeScreen>
     setState(() {
       _panelMode = _panelMode == mode ? _PromptPanelMode.none : mode;
       _showHistory = false;
+      _isSuperVoiceMode = false;
     });
 
     if (_panelMode == _PromptPanelMode.none) return;
@@ -365,7 +404,9 @@ class _HomeScreenState extends State<HomeScreen>
 
   Future<void> _openAppFromPrompt([String? promptOverride]) async {
     final l10n = _l10n(context);
-    final rawPrompt = TextCleaner.clean(promptOverride ?? _deviceController.text);
+    final rawPrompt = TextCleaner.clean(
+      promptOverride ?? _deviceController.text,
+    );
     final prompt = _extractAppQueryFromCommand(rawPrompt);
     if (prompt.isEmpty) {
       if (!mounted) return;
@@ -443,12 +484,109 @@ class _HomeScreenState extends State<HomeScreen>
       backgroundColor: theme.scaffoldBackgroundColor,
       body: Stack(
         children: [
+          _buildBackdrop(),
           _buildMainContent(),
           if (_showHistory) _buildHistoryOverlay(),
-          if (_panelMode != _PromptPanelMode.none) _buildPromptPanel(),
+          if (_panelMode != _PromptPanelMode.none && !_isSuperVoiceMode)
+            _buildPromptPanel(),
+          if (_isSuperVoiceMode || _superVoiceStatus.isNotEmpty)
+            _buildSuperVoiceBadge(),
           _buildTopControls(),
           _buildBottomControls(),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSuperVoiceBadge() {
+    final theme = Theme.of(context);
+    final l10n = _l10n(context);
+    final text = _isSuperVoiceMode ? l10n.superVoiceMode : _superVoiceStatus;
+
+    return Positioned(
+      left: widget.isRound ? 18 : 10,
+      right: widget.isRound ? 18 : 10,
+      bottom: widget.isRound ? 86 : 74,
+      child: IgnorePointer(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface.withOpacity(0.88),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: theme.colorScheme.primary.withOpacity(0.4),
+            ),
+          ),
+          child: Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11,
+              color: theme.colorScheme.onSurface.withOpacity(0.9),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBackdrop() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Positioned.fill(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.blue.shade500.withOpacity(isDark ? 0.34 : 0.22),
+              Colors.red.shade500.withOpacity(isDark ? 0.3 : 0.2),
+              Colors.yellow.shade600.withOpacity(isDark ? 0.24 : 0.16),
+              Colors.green.shade500.withOpacity(isDark ? 0.3 : 0.2),
+            ],
+          ),
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              top: -72,
+              right: -24,
+              child: _buildGlow(
+                color: _accentColor(theme).withOpacity(isDark ? 0.3 : 0.2),
+                size: 180,
+              ),
+            ),
+            Positioned(
+              bottom: -90,
+              left: -44,
+              child: _buildGlow(
+                color: theme.colorScheme.secondary.withOpacity(
+                  isDark ? 0.24 : 0.16,
+                ),
+                size: 220,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGlow({required dynamic color, required double size}) {
+    return IgnorePointer(
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color,
+          boxShadow: [
+            BoxShadow(color: color, blurRadius: size * 0.35, spreadRadius: 8),
+          ],
+        ),
       ),
     );
   }
@@ -496,9 +634,11 @@ class _HomeScreenState extends State<HomeScreen>
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           _buildSmallButton(
-            icon: Icons.devices_rounded,
-            onPressed: () => _openPanel(_PromptPanelMode.device),
-            isActive: _panelMode == _PromptPanelMode.device,
+            icon: Icons.graphic_eq_rounded,
+            onPressed: _startSuperVoiceMode,
+            onLongPress: () => _openPanel(_PromptPanelMode.device),
+            isActive:
+                _isSuperVoiceMode || _panelMode == _PromptPanelMode.device,
             size: 40,
           ),
           const SizedBox(width: 14),
@@ -518,30 +658,46 @@ class _HomeScreenState extends State<HomeScreen>
   Widget _buildSmallButton({
     required IconData icon,
     required void Function() onPressed,
+    void Function()? onLongPress,
     bool isActive = false,
     double size = 42,
   }) {
     final theme = Theme.of(context);
     final onSurface = theme.colorScheme.onSurface;
     final baseColor = theme.colorScheme.surface;
+    final accent = _accentColor(theme);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: isActive
-            ? _accentColor.withOpacity(0.22)
-            : baseColor.withOpacity(
-                theme.brightness == Brightness.dark ? 0.72 : 0.92,
+        gradient: isActive
+            ? LinearGradient(
+                colors: [accent, _accentDarkColor(theme)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : LinearGradient(
+                colors: [
+                  baseColor.withOpacity(isDark ? 0.78 : 0.94),
+                  baseColor.withOpacity(isDark ? 0.64 : 0.82),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
         shape: BoxShape.circle,
         border: Border.all(
           color: isActive
-              ? _accentColor
-              : onSurface.withOpacity(
-                  theme.brightness == Brightness.dark ? 0.28 : 0.2,
-                ),
+              ? accent.withOpacity(0.95)
+              : onSurface.withOpacity(isDark ? 0.24 : 0.12),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: theme.shadowColor.withOpacity(isDark ? 0.5 : 0.12),
+            blurRadius: 10,
+          ),
+        ],
       ),
       child: Material(
         color: Colors.transparent,
@@ -549,7 +705,12 @@ class _HomeScreenState extends State<HomeScreen>
         child: InkWell(
           customBorder: const CircleBorder(),
           onTap: onPressed,
-          child: Icon(icon, size: size * 0.5, color: onSurface),
+          onLongPress: onLongPress,
+          child: Icon(
+            icon,
+            size: size * 0.5,
+            color: isActive ? theme.colorScheme.onPrimary : onSurface,
+          ),
         ),
       ),
     );
@@ -557,6 +718,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   Widget _buildMicButton() {
     final theme = Theme.of(context);
+    final accent = _accentColor(theme);
     final onPrimary = theme.colorScheme.onPrimary;
     return AnimatedBuilder(
       animation: _pulseController,
@@ -569,9 +731,7 @@ class _HomeScreenState extends State<HomeScreen>
             boxShadow: _isListening
                 ? [
                     BoxShadow(
-                      color: _accentColor.withOpacity(
-                        0.5 * _pulseController.value,
-                      ),
+                      color: accent.withOpacity(0.5 * _pulseController.value),
                       blurRadius: 15 * _pulseController.value,
                       spreadRadius: 5 * _pulseController.value,
                     ),
@@ -582,7 +742,7 @@ class _HomeScreenState extends State<HomeScreen>
             heroTag: "mic",
             elevation: 4,
             onPressed: _isListening ? _stopListening : _startListening,
-            backgroundColor: _isListening ? Colors.redAccent : _accentColor,
+            backgroundColor: _isListening ? Colors.redAccent : accent,
             shape: const CircleBorder(),
             child: Icon(
               _isListening ? Icons.mic_off_rounded : Icons.mic_rounded,
@@ -601,6 +761,8 @@ class _HomeScreenState extends State<HomeScreen>
         final l10n = AppLocalizer.fromCode(settings.language);
         final theme = Theme.of(context);
         final onSurface = theme.colorScheme.onSurface;
+        final accent = _accentColor(theme);
+        final accentDark = _accentDarkColor(theme);
 
         if (gemini.chatHistory.isEmpty && !gemini.isLoading) {
           return Center(
@@ -611,11 +773,18 @@ class _HomeScreenState extends State<HomeScreen>
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _accentColor.withOpacity(0.1),
+                    gradient: LinearGradient(
+                      colors: [
+                        accent.withOpacity(0.2),
+                        accentDark.withOpacity(0.2),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: _accentColor.withOpacity(0.2),
+                        color: accent.withOpacity(0.3),
                         blurRadius: 20,
                         spreadRadius: 5,
                       ),
@@ -665,15 +834,27 @@ class _HomeScreenState extends State<HomeScreen>
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Center(
-                  child: SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation(
-                        _accentColor.withOpacity(0.5),
+                  child: Column(
+                    children: [
+                      SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation(
+                            accent.withOpacity(0.6),
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 6),
+                      Text(
+                        l10n.thinkingForSeconds(gemini.thinkingSeconds),
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: onSurface.withOpacity(0.7),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               );
@@ -697,7 +878,7 @@ class _HomeScreenState extends State<HomeScreen>
                 decoration: BoxDecoration(
                   gradient: isUser
                       ? LinearGradient(
-                          colors: [_accentColor, _accentDarkColor],
+                          colors: [accent, accentDark],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         )
@@ -710,8 +891,8 @@ class _HomeScreenState extends State<HomeScreen>
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: theme.shadowColor.withOpacity(0.2),
-                      blurRadius: 4,
+                      color: theme.shadowColor.withOpacity(0.18),
+                      blurRadius: 8,
                     ),
                   ],
                 ),
@@ -734,6 +915,8 @@ class _HomeScreenState extends State<HomeScreen>
     final settings = Provider.of<SettingsService>(context, listen: false);
     final l10n = AppLocalizer.fromCode(settings.language);
     final theme = Theme.of(context);
+    final accent = _accentColor(theme);
+    final accentDark = _accentDarkColor(theme);
     final isDevice = _panelMode == _PromptPanelMode.device;
     final controller = isDevice ? _deviceController : _chatController;
     final focusNode = isDevice ? _deviceFocusNode : _chatFocusNode;
@@ -749,11 +932,23 @@ class _HomeScreenState extends State<HomeScreen>
         ),
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: theme.colorScheme.surface.withOpacity(0.94),
+          gradient: LinearGradient(
+            colors: [
+              theme.colorScheme.surface.withOpacity(0.97),
+              theme.colorScheme.surfaceContainerHighest.withOpacity(0.42),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: theme.colorScheme.outline.withOpacity(0.3)),
+          border: Border.all(
+            color: theme.colorScheme.outline.withOpacity(0.28),
+          ),
           boxShadow: [
-            BoxShadow(color: theme.shadowColor.withOpacity(0.2), blurRadius: 8),
+            BoxShadow(
+              color: theme.shadowColor.withOpacity(0.16),
+              blurRadius: 14,
+            ),
           ],
         ),
         child: Column(
@@ -786,13 +981,6 @@ class _HomeScreenState extends State<HomeScreen>
                         fontSize: 11,
                         color: theme.colorScheme.onSurface.withOpacity(0.4),
                       ),
-                      filled: true,
-                      fillColor: theme.colorScheme.surfaceContainerHighest
-                          .withOpacity(0.35),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide.none,
-                      ),
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 10,
                         vertical: 8,
@@ -813,7 +1001,7 @@ class _HomeScreenState extends State<HomeScreen>
                     onPressed: isDevice
                         ? _openAppFromPrompt
                         : () => _sendChatMessage(controller.text),
-                    backgroundColor: _accentColor,
+                    backgroundColor: accent,
                     child: Icon(
                       isDevice ? Icons.open_in_new_rounded : Icons.send_rounded,
                       size: 16,
@@ -866,8 +1054,13 @@ class _HomeScreenState extends State<HomeScreen>
                             vertical: 6,
                           ),
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.surfaceContainerHighest
-                                .withOpacity(0.25),
+                            gradient: LinearGradient(
+                              colors: [
+                                theme.colorScheme.surfaceContainerHighest
+                                    .withOpacity(0.42),
+                                accentDark.withOpacity(0.08),
+                              ],
+                            ),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Row(
@@ -911,16 +1104,26 @@ class _HomeScreenState extends State<HomeScreen>
         final l10n = AppLocalizer.fromCode(settings.language);
         final sessions = historyService.sessions;
         final theme = Theme.of(context);
+        final accent = _accentColor(theme);
 
         return Container(
-          color: theme.colorScheme.scrim.withOpacity(0.74),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                theme.colorScheme.scrim.withOpacity(0.84),
+                theme.colorScheme.scrim.withOpacity(0.74),
+              ],
+            ),
+          ),
           child: Column(
             children: [
               const SizedBox(height: 46),
               Text(
                 l10n.chatHistory,
                 style: TextStyle(
-                  color: _accentColor,
+                  color: accent,
                   fontSize: 12,
                   letterSpacing: 1.4,
                 ),
@@ -952,14 +1155,14 @@ class _HomeScreenState extends State<HomeScreen>
                                 padding: const EdgeInsets.all(12),
                                 decoration: BoxDecoration(
                                   color: isActive
-                                      ? _accentColor.withOpacity(0.15)
+                                      ? accent.withOpacity(0.18)
                                       : theme.colorScheme.surface.withOpacity(
                                           0.74,
                                         ),
                                   borderRadius: BorderRadius.circular(12),
                                   border: Border.all(
                                     color: isActive
-                                        ? _accentColor.withOpacity(0.5)
+                                        ? accent.withOpacity(0.52)
                                         : theme.colorScheme.outline.withOpacity(
                                             0.25,
                                           ),
@@ -981,7 +1184,7 @@ class _HomeScreenState extends State<HomeScreen>
                                     if (isActive)
                                       Icon(
                                         Icons.check_circle,
-                                        color: _accentColor,
+                                        color: accent,
                                         size: 14,
                                       ),
                                   ],
