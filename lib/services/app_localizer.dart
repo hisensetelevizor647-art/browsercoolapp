@@ -150,4 +150,21 @@ class AppLocalizer {
     uk: 'Assistant settings unavailable',
     sk: 'Assistant settings unavailable',
   );
+
+  String get voiceSessionTitle =>
+      _t(en: 'Voice chat', uk: 'Голосовий чат', sk: 'Hlasovy chat');
+
+  String get subtitlesPlaceholder => _t(
+    en: 'Subtitles will appear here',
+    uk: 'Тут зʼявляться субтитри',
+    sk: 'Titulky sa zobrazia tu',
+  );
+
+  String get youLabel => _t(en: 'You', uk: 'Ти', sk: 'Ty');
+
+  String get aiLabel => _t(en: 'AI', uk: 'AI', sk: 'AI');
+
+  String get voiceOn => _t(en: 'VOICE ON', uk: 'ГОЛОС ON', sk: 'HLAS ON');
+
+  String get voiceOff => _t(en: 'VOICE OFF', uk: 'ГОЛОС OFF', sk: 'HLAS OFF');
 }

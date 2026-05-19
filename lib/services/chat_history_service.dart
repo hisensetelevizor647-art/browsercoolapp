@@ -34,12 +34,18 @@ class ChatSession {
 }
 
 class ChatHistoryService with ChangeNotifier {
+  static const _chatSessionsKey = 'chat_sessions';
+  static const _currentSessionIdKey = 'current_session_id';
+  static const _voiceTranscriptKey = 'voice_transcript_text';
+
   SharedPreferences? _prefs;
   List<ChatSession> _sessions = [];
   String? _currentSessionId;
+  String _voiceTranscriptText = '';
 
   List<ChatSession> get sessions => _sessions;
   String? get currentSessionId => _currentSessionId;
+  String get voiceTranscriptText => _voiceTranscriptText;
 
   ChatSession? get currentSession {
     if (_currentSessionId == null) return null;
@@ -58,7 +64,7 @@ class ChatHistoryService with ChangeNotifier {
   void _loadSessions() {
     if (_prefs == null) return;
 
-    final sessionsJson = _prefs!.getString('chat_sessions');
+    final sessionsJson = _prefs!.getString(_chatSessionsKey);
     if (sessionsJson != null) {
       try {
         final List<dynamic> decoded = jsonDecode(sessionsJson);
@@ -69,16 +75,17 @@ class ChatHistoryService with ChangeNotifier {
       }
     }
 
-    _currentSessionId = _prefs!.getString('current_session_id');
+    _currentSessionId = _prefs!.getString(_currentSessionIdKey);
+    _voiceTranscriptText = _prefs!.getString(_voiceTranscriptKey) ?? '';
     notifyListeners();
   }
 
   Future<void> _saveSessions() async {
     if (_prefs == null) return;
     final json = jsonEncode(_sessions.map((e) => e.toJson()).toList());
-    await _prefs!.setString('chat_sessions', json);
+    await _prefs!.setString(_chatSessionsKey, json);
     if (_currentSessionId != null) {
-      await _prefs!.setString('current_session_id', _currentSessionId!);
+      await _prefs!.setString(_currentSessionIdKey, _currentSessionId!);
     }
   }
 
@@ -101,7 +108,7 @@ class ChatHistoryService with ChangeNotifier {
 
   Future<void> setCurrentSession(String sessionId) async {
     _currentSessionId = sessionId;
-    await _prefs?.setString('current_session_id', sessionId);
+    await _prefs?.setString(_currentSessionIdKey, sessionId);
     notifyListeners();
   }
 
@@ -149,5 +156,39 @@ class ChatHistoryService with ChangeNotifier {
 
   List<Map<String, String>> getCurrentSessionMessages() {
     return currentSession?.messages ?? [];
+  }
+
+  Future<void> appendVoiceTranscript({
+    required String role,
+    required String content,
+  }) async {
+    final cleanedRole = TextCleaner.clean(role).toUpperCase();
+    final cleanedContent = TextCleaner.clean(content);
+    if (cleanedRole.isEmpty || cleanedContent.isEmpty) return;
+
+    final timestamp = _formatTimestamp(DateTime.now());
+    final line = '[$timestamp] $cleanedRole: $cleanedContent';
+    _voiceTranscriptText = _voiceTranscriptText.isEmpty
+        ? line
+        : '$_voiceTranscriptText\n$line';
+
+    await _prefs?.setString(_voiceTranscriptKey, _voiceTranscriptText);
+    notifyListeners();
+  }
+
+  Future<void> clearVoiceTranscript() async {
+    _voiceTranscriptText = '';
+    await _prefs?.setString(_voiceTranscriptKey, _voiceTranscriptText);
+    notifyListeners();
+  }
+
+  String _formatTimestamp(DateTime dateTime) {
+    final year = dateTime.year.toString().padLeft(4, '0');
+    final month = dateTime.month.toString().padLeft(2, '0');
+    final day = dateTime.day.toString().padLeft(2, '0');
+    final hour = dateTime.hour.toString().padLeft(2, '0');
+    final minute = dateTime.minute.toString().padLeft(2, '0');
+    final second = dateTime.second.toString().padLeft(2, '0');
+    return '$year-$month-$day $hour:$minute:$second';
   }
 }
