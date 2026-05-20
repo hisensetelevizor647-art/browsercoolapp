@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
 import 'text_cleaner.dart';
 
 class ChatSession {
@@ -56,36 +58,53 @@ class ChatHistoryService with ChangeNotifier {
     }
   }
 
-  Future<void> init() async {
-    _prefs = await SharedPreferences.getInstance();
-    _loadSessions();
+  Future<File> get _sessionsFile async {
+    final directory = await getApplicationDocumentsDirectory();
+    return File('${directory.path}/chat_sessions.json');
   }
 
-  void _loadSessions() {
-    if (_prefs == null) return;
+  Future<void> init() async {
+    _prefs = await SharedPreferences.getInstance();
+    await _loadSessions();
+  }
 
-    final sessionsJson = _prefs!.getString(_chatSessionsKey);
-    if (sessionsJson != null) {
-      try {
+  Future<void> _loadSessions() async {
+    try {
+      final file = await _sessionsFile;
+      if (await file.exists()) {
+        final sessionsJson = await file.readAsString();
         final List<dynamic> decoded = jsonDecode(sessionsJson);
         _sessions = decoded.map((e) => ChatSession.fromJson(e)).toList();
         _sessions.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      } catch (_) {
-        _sessions = [];
+      } else if (_prefs != null) {
+        // Fallback to migrate from SharedPreferences
+        final sessionsJson = _prefs!.getString(_chatSessionsKey);
+        if (sessionsJson != null) {
+          final List<dynamic> decoded = jsonDecode(sessionsJson);
+          _sessions = decoded.map((e) => ChatSession.fromJson(e)).toList();
+          _sessions.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          await _saveSessions(); // Save to new file location
+        }
       }
+    } catch (_) {
+      _sessions = [];
     }
 
-    _currentSessionId = _prefs!.getString(_currentSessionIdKey);
-    _voiceTranscriptText = _prefs!.getString(_voiceTranscriptKey) ?? '';
+    _currentSessionId = _prefs?.getString(_currentSessionIdKey);
+    _voiceTranscriptText = _prefs?.getString(_voiceTranscriptKey) ?? '';
     notifyListeners();
   }
 
   Future<void> _saveSessions() async {
-    if (_prefs == null) return;
-    final json = jsonEncode(_sessions.map((e) => e.toJson()).toList());
-    await _prefs!.setString(_chatSessionsKey, json);
-    if (_currentSessionId != null) {
-      await _prefs!.setString(_currentSessionIdKey, _currentSessionId!);
+    try {
+      final file = await _sessionsFile;
+      final jsonStr = jsonEncode(_sessions.map((e) => e.toJson()).toList());
+      await file.writeAsString(jsonStr);
+      if (_currentSessionId != null && _prefs != null) {
+        await _prefs!.setString(_currentSessionIdKey, _currentSessionId!);
+      }
+    } catch (e) {
+      debugPrint('Error saving sessions: $e');
     }
   }
 

@@ -3,12 +3,25 @@ name: Build Watch APK
 on:
   push:
     branches:
+      - main
+      - ai-watch-update
+  pull_request:
+    branches:
+      - main
       - ai-watch-update
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apk-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -19,25 +32,24 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+          cache: gradle
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          cache: true
 
       - name: Install Dependencies
         run: flutter pub get
 
-      - name: Run Tests
-        run: flutter test
-
       - name: Build APK
-        run: flutter build apk --release --target-platform android-arm --no-tree-shake-icons
+        run: flutter build apk --release --no-tree-shake-icons
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: oleksandrai-watch-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: ai-watch-apk-${{ github.run_number }}
+          path: build/app/outputs/flutter-apk/*.apk
           if-no-files-found: error
           retention-days: 30

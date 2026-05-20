@@ -5,6 +5,7 @@ import '../services/app_localizer.dart';
 import '../services/gemini_service.dart';
 import '../services/settings_service.dart';
 import '../services/watch_assistant_service.dart';
+import '../theme/watch_theme.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -26,39 +27,41 @@ class SettingsScreen extends StatelessWidget {
       body: Stack(
         children: [
           Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Colors.blue.shade500.withOpacity(isDark ? 0.34 : 0.22),
-                    Colors.red.shade500.withOpacity(isDark ? 0.3 : 0.2),
-                    Colors.yellow.shade600.withOpacity(isDark ? 0.24 : 0.16),
-                    Colors.green.shade500.withOpacity(isDark ? 0.3 : 0.2),
-                  ],
-                ),
-              ),
-              child: Stack(
-                children: [
-                  Positioned(
-                    top: -88,
-                    right: -44,
-                    child: _buildGlow(
-                      accent.withOpacity(isDark ? 0.28 : 0.2),
-                      210,
+            child: Consumer<SettingsService>(
+              builder: (context, settings, child) {
+                return DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: WatchTheme.getGradientColors(
+                        settings.backgroundTheme,
+                        isDark,
+                      ),
                     ),
                   ),
-                  Positioned(
-                    bottom: -92,
-                    left: -48,
-                    child: _buildGlow(
-                      accentAlt.withOpacity(isDark ? 0.24 : 0.16),
-                      220,
-                    ),
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        top: -88,
+                        right: -44,
+                        child: _buildGlow(
+                          accent.withOpacity(isDark ? 0.28 : 0.2),
+                          210,
+                        ),
+                      ),
+                      Positioned(
+                        bottom: -92,
+                        left: -48,
+                        child: _buildGlow(
+                          accentAlt.withOpacity(isDark ? 0.24 : 0.16),
+                          220,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                );
+              },
             ),
           ),
           Center(
@@ -162,6 +165,42 @@ class SettingsScreen extends StatelessWidget {
                                     context,
                                     listen: false,
                                   ).updateLanguage(newValue);
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildSectionCard(
+                        theme,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Background Theme',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            DropdownButton<String>(
+                              value: settings.backgroundTheme,
+                              underline: const SizedBox(),
+                              isDense: true,
+                              style: const TextStyle(fontSize: 12),
+                              items:
+                                  [
+                                    {'id': 'default', 'name': 'Default'},
+                                    {'id': 'ocean', 'name': 'Ocean'},
+                                    {'id': 'sunset', 'name': 'Sunset'},
+                                    {'id': 'darkVoid', 'name': 'Dark Void'},
+                                  ].map((bg) {
+                                    return DropdownMenuItem<String>(
+                                      value: bg['id'],
+                                      child: Text(bg['name']!),
+                                    );
+                                  }).toList(),
+                              onChanged: (newValue) {
+                                if (newValue != null) {
+                                  settings.setBackgroundTheme(newValue);
                                 }
                               },
                             ),

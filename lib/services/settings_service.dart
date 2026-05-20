@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsService with ChangeNotifier {
   static const String defaultModel = 'abacusai/dracarys-llama-3.1-70b-instruct';
@@ -9,10 +11,12 @@ class SettingsService with ChangeNotifier {
   ThemeMode _themeMode = ThemeMode.dark;
   String _language = 'en';
   String _model = defaultModel;
+  String _backgroundTheme = 'default';
 
   ThemeMode get themeMode => _themeMode;
   String get language => _language;
   String get model => _model;
+  String get backgroundTheme => _backgroundTheme;
 
   // Available models
   static const List<Map<String, String>> availableModels = [
@@ -49,6 +53,7 @@ class SettingsService with ChangeNotifier {
     if (!isKnownModel) {
       _prefs!.setString('model', _model);
     }
+    _backgroundTheme = _prefs!.getString('backgroundTheme') ?? 'default';
 
     notifyListeners();
   }
@@ -70,5 +75,11 @@ class SettingsService with ChangeNotifier {
     _model = newModel;
     notifyListeners();
     await _prefs?.setString('model', newModel);
+  }
+
+  Future<void> setBackgroundTheme(String theme) async {
+    _backgroundTheme = theme;
+    notifyListeners();
+    await _prefs?.setString('backgroundTheme', theme);
   }
 }

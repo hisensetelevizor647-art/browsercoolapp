@@ -12,6 +12,40 @@ class WatchTheme {
   static final _darkBackground = Colors.blueGrey.shade900;
   static final _darkSurface = Colors.blueGrey.shade800;
 
+  static List<Color> getGradientColors(String themeId, bool isDark) {
+    switch (themeId) {
+      case 'ocean':
+        return [
+          Colors.cyan.shade500.withOpacity(isDark ? 0.34 : 0.22),
+          Colors.blue.shade600.withOpacity(isDark ? 0.3 : 0.2),
+          Colors.lightBlue.shade400.withOpacity(isDark ? 0.24 : 0.16),
+          Colors.indigo.shade500.withOpacity(isDark ? 0.3 : 0.2),
+        ];
+      case 'sunset':
+        return [
+          Colors.orange.shade500.withOpacity(isDark ? 0.34 : 0.22),
+          Colors.red.shade500.withOpacity(isDark ? 0.3 : 0.2),
+          Colors.pink.shade400.withOpacity(isDark ? 0.24 : 0.16),
+          Colors.deepPurple.shade500.withOpacity(isDark ? 0.3 : 0.2),
+        ];
+      case 'darkVoid':
+        return [
+          Colors.grey.shade800.withOpacity(isDark ? 0.4 : 0.3),
+          Colors.black87.withOpacity(isDark ? 0.5 : 0.4),
+          Colors.blueGrey.shade900.withOpacity(isDark ? 0.4 : 0.3),
+          Colors.black.withOpacity(isDark ? 0.6 : 0.5),
+        ];
+      case 'default':
+      default:
+        return [
+          Colors.blue.shade500.withOpacity(isDark ? 0.34 : 0.22),
+          Colors.red.shade500.withOpacity(isDark ? 0.3 : 0.2),
+          Colors.yellow.shade600.withOpacity(isDark ? 0.24 : 0.16),
+          Colors.green.shade500.withOpacity(isDark ? 0.3 : 0.2),
+        ];
+    }
+  }
+
   static ThemeData light() {
     final scheme = ColorScheme.fromSeed(
       seedColor: _lightPrimary,

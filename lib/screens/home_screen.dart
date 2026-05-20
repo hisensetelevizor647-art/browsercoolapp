@@ -9,6 +9,7 @@ import '../services/gemini_service.dart';
 import '../services/settings_service.dart';
 import '../services/text_cleaner.dart';
 import '../services/watch_assistant_service.dart';
+import '../theme/watch_theme.dart';
 import 'settings_screen.dart';
 
 enum _PromptPanelMode { none, chat, device }
@@ -17,10 +18,12 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
     this.openKeyboardOnStart = false,
+    this.startInVoiceMode = false,
     this.isRound = false,
   });
 
   final bool openKeyboardOnStart;
+  final bool startInVoiceMode;
   final bool isRound;
 
   @override
@@ -72,6 +75,10 @@ class _HomeScreenState extends State<HomeScreen>
     if (widget.openKeyboardOnStart) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _openPanel(_PromptPanelMode.chat);
+      });
+    } else if (widget.startInVoiceMode) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _startSuperVoiceMode();
       });
     }
   }
@@ -164,6 +171,8 @@ class _HomeScreenState extends State<HomeScreen>
       }
     });
     _speech.listen(
+      listenMode: stt.ListenMode.dictation,
+      onDevice: true,
       onResult: (val) {
         if (!mounted) return;
         setState(() {
@@ -504,9 +513,9 @@ class _HomeScreenState extends State<HomeScreen>
     final text = _isSuperVoiceMode ? l10n.superVoiceMode : _superVoiceStatus;
 
     return Positioned(
-      left: widget.isRound ? 18 : 10,
-      right: widget.isRound ? 18 : 10,
-      bottom: widget.isRound ? 86 : 74,
+      left: widget.isRound ? 22 : 10,
+      right: widget.isRound ? 22 : 10,
+      bottom: widget.isRound ? 102 : 74,
       child: IgnorePointer(
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -541,12 +550,10 @@ class _HomeScreenState extends State<HomeScreen>
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              Colors.blue.shade500.withOpacity(isDark ? 0.34 : 0.22),
-              Colors.red.shade500.withOpacity(isDark ? 0.3 : 0.2),
-              Colors.yellow.shade600.withOpacity(isDark ? 0.24 : 0.16),
-              Colors.green.shade500.withOpacity(isDark ? 0.3 : 0.2),
-            ],
+            colors: WatchTheme.getGradientColors(
+              Provider.of<SettingsService>(context, listen: false).backgroundTheme,
+              isDark,
+            ),
           ),
         ),
         child: Stack(
@@ -592,11 +599,11 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildTopControls() {
-    final topInset = widget.isRound ? 22.0 : 10.0;
+    final topInset = widget.isRound ? 32.0 : 10.0;
     return Positioned(
       top: topInset,
-      left: widget.isRound ? 8 : 4,
-      right: widget.isRound ? 8 : 4,
+      left: widget.isRound ? 14 : 4,
+      right: widget.isRound ? 14 : 4,
       child: Row(
         children: [
           _buildSmallButton(icon: Icons.add_rounded, onPressed: _startNewChat),
@@ -625,11 +632,11 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildBottomControls() {
-    final bottomInset = widget.isRound ? 20.0 : 10.0;
+    final bottomInset = widget.isRound ? 30.0 : 10.0;
     return Positioned(
       bottom: bottomInset,
-      left: widget.isRound ? 8 : 4,
-      right: widget.isRound ? 8 : 4,
+      left: widget.isRound ? 14 : 4,
+      right: widget.isRound ? 14 : 4,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -823,10 +830,10 @@ class _HomeScreenState extends State<HomeScreen>
 
         return ListView.builder(
           padding: EdgeInsets.fromLTRB(
-            widget.isRound ? 22 : 14,
-            widget.isRound ? 58 : 42,
-            widget.isRound ? 22 : 14,
-            widget.isRound ? 135 : 122,
+            widget.isRound ? 28 : 14,
+            widget.isRound ? 68 : 42,
+            widget.isRound ? 28 : 14,
+            widget.isRound ? 145 : 122,
           ),
           itemCount: gemini.chatHistory.length + (gemini.isLoading ? 1 : 0),
           itemBuilder: (context, index) {
@@ -922,13 +929,13 @@ class _HomeScreenState extends State<HomeScreen>
     final focusNode = isDevice ? _deviceFocusNode : _chatFocusNode;
 
     return Positioned(
-      left: widget.isRound ? 10 : 6,
-      right: widget.isRound ? 10 : 6,
-      bottom: widget.isRound ? 92 : 80,
+      left: widget.isRound ? 16 : 6,
+      right: widget.isRound ? 16 : 6,
+      bottom: widget.isRound ? 102 : 80,
       child: Container(
         constraints: BoxConstraints(
           minHeight: 80,
-          maxHeight: isDevice ? 190 : 115,
+          maxHeight: isDevice ? 180 : 110,
         ),
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(

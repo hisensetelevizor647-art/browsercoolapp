@@ -9,26 +9,63 @@ import androidx.wear.tiles.LayoutElementBuilders
 import androidx.wear.tiles.ModifiersBuilders
 import androidx.wear.tiles.ActionBuilders
 import androidx.wear.tiles.DimensionBuilders
+import androidx.wear.tiles.ColorBuilders
 import com.example.ai_watch.R
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 
 class MainTileService : TileService() {
     companion object {
-        private const val RESOURCES_VERSION = "4"
-        private const val LOGO_RESOURCE_ID = "ca_logo"
+        private const val RESOURCES_VERSION = "5"
     }
 
-    override fun onTileRequest(requestParams: RequestBuilders.TileRequest): ListenableFuture<TileBuilders.Tile> {
-        val openAppAction = ActionBuilders.LaunchAction.Builder()
-            .setAndroidActivity(
-                ActionBuilders.AndroidActivity.Builder()
-                    .setClassName("com.example.ai_watch.MainActivity")
-                    .setPackageName(this.packageName)
+    private fun createButton(text: String, colorArgb: Int, action: ActionBuilders.Action): LayoutElementBuilders.LayoutElement {
+        return LayoutElementBuilders.Box.Builder()
+            .setWidth(DimensionBuilders.expand())
+            .setHeight(DimensionBuilders.dp(38f))
+            .setModifiers(
+                ModifiersBuilders.Modifiers.Builder()
+                    .setClickable(
+                        ModifiersBuilders.Clickable.Builder()
+                            .setId("click_$text")
+                            .setOnClick(action)
+                            .build()
+                    )
+                    .setBackground(
+                        ModifiersBuilders.Background.Builder()
+                            .setColor(ColorBuilders.argb(colorArgb))
+                            .setCorner(
+                                ModifiersBuilders.Corner.Builder()
+                                    .setRadius(DimensionBuilders.dp(19f))
+                                    .build()
+                            )
+                            .build()
+                    )
+                    .setPadding(
+                        ModifiersBuilders.Padding.Builder()
+                            .setStart(DimensionBuilders.dp(12f))
+                            .setEnd(DimensionBuilders.dp(12f))
+                            .build()
+                    )
+                    .build()
+            )
+            .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
+            .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
+            .addContent(
+                LayoutElementBuilders.Text.Builder()
+                    .setText(text)
+                    .setFontStyle(
+                        LayoutElementBuilders.FontStyle.Builder()
+                            .setColor(ColorBuilders.argb(0xFFFFFFFF.toInt()))
+                            .setSize(DimensionBuilders.sp(14f))
+                            .build()
+                    )
                     .build()
             )
             .build()
+    }
 
+    override fun onTileRequest(requestParams: RequestBuilders.TileRequest): ListenableFuture<TileBuilders.Tile> {
         val startChatAction = ActionBuilders.LaunchAction.Builder()
             .setAndroidActivity(
                 ActionBuilders.AndroidActivity.Builder()
@@ -38,63 +75,34 @@ class MainTileService : TileService() {
             )
             .build()
 
-        val logoClickable = ModifiersBuilders.Clickable.Builder()
-            .setId("open_app")
-            .setOnClick(openAppAction)
-            .build()
-
-        val startChatClickable = ModifiersBuilders.Clickable.Builder()
-            .setId("start_chat")
-            .setOnClick(startChatAction)
-            .build()
-
-        val logoImage = LayoutElementBuilders.Image.Builder()
-            .setResourceId(LOGO_RESOURCE_ID)
-            .setWidth(DimensionBuilders.dp(64f))
-            .setHeight(DimensionBuilders.dp(64f))
-            .build()
-
-        val logoCircle = LayoutElementBuilders.Box.Builder()
-            .addContent(logoImage)
-            .setModifiers(
-                ModifiersBuilders.Modifiers.Builder()
-                    .setClickable(logoClickable)
+        val assistantAction = ActionBuilders.LaunchAction.Builder()
+            .setAndroidActivity(
+                ActionBuilders.AndroidActivity.Builder()
+                    .setClassName("com.example.ai_watch.AssistantActivity")
+                    .setPackageName(this.packageName)
                     .build()
             )
-            .setWidth(DimensionBuilders.dp(80f))
-            .setHeight(DimensionBuilders.dp(80f))
-            .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
-            .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
             .build()
 
-        val startChatText = LayoutElementBuilders.Text.Builder()
-            .setText("Start chat")
-            .build()
-
-        val startChatButton = LayoutElementBuilders.Box.Builder()
-            .addContent(startChatText)
-            .setModifiers(
-                ModifiersBuilders.Modifiers.Builder()
-                    .setClickable(startChatClickable)
+        val voiceModeAction = ActionBuilders.LaunchAction.Builder()
+            .setAndroidActivity(
+                ActionBuilders.AndroidActivity.Builder()
+                    .setClassName("com.example.ai_watch.StartVoiceModeActivity")
+                    .setPackageName(this.packageName)
                     .build()
             )
-            .setWidth(DimensionBuilders.wrap())
-            .setHeight(DimensionBuilders.wrap())
-            .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
-            .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
             .build()
 
         val columnLayout = LayoutElementBuilders.Column.Builder()
-            .addContent(logoCircle)
+            .addContent(createButton("Чат", 0xFF00796B.toInt(), startChatAction))
             .addContent(
-                LayoutElementBuilders.Spacer.Builder()
-                    .setHeight(DimensionBuilders.dp(8f))
-                    .build()
+                LayoutElementBuilders.Spacer.Builder().setHeight(DimensionBuilders.dp(8f)).build()
             )
-            .addContent(startChatButton)
-            .setWidth(DimensionBuilders.wrap())
-            .setHeight(DimensionBuilders.wrap())
-            .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
+            .addContent(createButton("Голосовий ввід", 0xFF00B0FF.toInt(), assistantAction))
+            .addContent(
+                LayoutElementBuilders.Spacer.Builder().setHeight(DimensionBuilders.dp(8f)).build()
+            )
+            .addContent(createButton("Голосовий режим", 0xFFFF9800.toInt(), voiceModeAction))
             .build()
 
         val centeredLayout = LayoutElementBuilders.Box.Builder()
@@ -103,6 +111,15 @@ class MainTileService : TileService() {
             .setHeight(DimensionBuilders.expand())
             .setHorizontalAlignment(LayoutElementBuilders.HORIZONTAL_ALIGN_CENTER)
             .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
+            .setModifiers(
+                ModifiersBuilders.Modifiers.Builder()
+                    .setPadding(
+                        ModifiersBuilders.Padding.Builder()
+                            .setAll(DimensionBuilders.dp(14f))
+                            .build()
+                    )
+                    .build()
+            )
             .build()
 
         val timeline = TimelineBuilders.Timeline.Builder()
@@ -129,16 +146,6 @@ class MainTileService : TileService() {
         return Futures.immediateFuture(
             ResourceBuilders.Resources.Builder()
                 .setVersion(RESOURCES_VERSION)
-                .addIdToImageMapping(
-                    LOGO_RESOURCE_ID,
-                    ResourceBuilders.ImageResource.Builder()
-                        .setAndroidResourceByResId(
-                            ResourceBuilders.AndroidImageResourceByResId.Builder()
-                                .setResourceId(R.mipmap.ic_launcher)
-                                .build()
-                        )
-                        .build()
-                )
                 .build()
         )
     }

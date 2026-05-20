@@ -59,6 +59,7 @@ class MyApp extends StatelessWidget {
             '/': (_) => const WatchScreen(),
             '/start-chat': (_) => const WatchScreen(openKeyboardOnStart: true),
             '/assistant': (_) => const WatchScreen(assistantMode: true),
+            '/voice-mode': (_) => const WatchScreen(startInVoiceMode: true),
           },
         );
       },
@@ -71,10 +72,12 @@ class WatchScreen extends StatelessWidget {
     super.key,
     this.openKeyboardOnStart = false,
     this.assistantMode = false,
+    this.startInVoiceMode = false,
   });
 
   final bool openKeyboardOnStart;
   final bool assistantMode;
+  final bool startInVoiceMode;
 
   @override
   Widget build(BuildContext context) {
@@ -88,6 +91,7 @@ class WatchScreen extends StatelessWidget {
                       ? AssistantScreen(isRound: isRound)
                       : HomeScreen(
                           openKeyboardOnStart: openKeyboardOnStart,
+                          startInVoiceMode: startInVoiceMode,
                           isRound: isRound,
                         )
                 : const AmbientWatchFace();
@@ -118,14 +122,7 @@ class AmbientWatchFace extends StatelessWidget {
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [
-                        Colors.blue.shade500.withOpacity(isDark ? 0.34 : 0.22),
-                        Colors.red.shade500.withOpacity(isDark ? 0.3 : 0.2),
-                        Colors.yellow.shade600.withOpacity(
-                          isDark ? 0.24 : 0.16,
-                        ),
-                        Colors.green.shade500.withOpacity(isDark ? 0.3 : 0.2),
-                      ],
+                      colors: WatchTheme.getGradientColors(settings.backgroundTheme, isDark),
                     ),
                   ),
                 ),

@@ -11,6 +11,7 @@ import '../services/gemini_service.dart';
 import '../services/settings_service.dart';
 import '../services/text_cleaner.dart';
 import '../services/tts_service.dart';
+import '../theme/watch_theme.dart';
 
 class AssistantScreen extends StatefulWidget {
   const AssistantScreen({super.key, this.isRound = false});
@@ -137,6 +138,8 @@ class _AssistantScreenState extends State<AssistantScreen>
     });
 
     _speech.listen(
+      listenMode: stt.ListenMode.dictation,
+      onDevice: true,
       listenOptions: stt.SpeechListenOptions(partialResults: true),
       onResult: (result) {
         if (!mounted) return;
@@ -317,10 +320,10 @@ class _AssistantScreenState extends State<AssistantScreen>
           SafeArea(
             child: Padding(
               padding: EdgeInsets.fromLTRB(
-                widget.isRound ? 18 : 12,
-                widget.isRound ? 16 : 12,
-                widget.isRound ? 18 : 12,
-                widget.isRound ? 14 : 12,
+                widget.isRound ? 28 : 12,
+                widget.isRound ? 28 : 12,
+                widget.isRound ? 28 : 12,
+                widget.isRound ? 24 : 12,
               ),
               child: Column(
                 children: [
@@ -409,12 +412,10 @@ class _AssistantScreenState extends State<AssistantScreen>
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              Colors.blue.shade500.withOpacity(isDark ? 0.34 : 0.22),
-              Colors.red.shade500.withOpacity(isDark ? 0.3 : 0.2),
-              Colors.yellow.shade600.withOpacity(isDark ? 0.24 : 0.16),
-              Colors.green.shade500.withOpacity(isDark ? 0.3 : 0.2),
-            ],
+            colors: WatchTheme.getGradientColors(
+              Provider.of<SettingsService>(context, listen: false).backgroundTheme,
+              isDark,
+            ),
           ),
         ),
         child: Stack(
