@@ -46,6 +46,7 @@ class MyApp extends StatelessWidget {
         final initialRoute = switch (defaultRoute) {
           '/start-chat' => '/start-chat',
           '/assistant' => '/assistant',
+          '/voice-mode' => '/voice-mode',
           _ => '/',
         };
 
@@ -122,7 +123,10 @@ class AmbientWatchFace extends StatelessWidget {
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: WatchTheme.getGradientColors(settings.backgroundTheme, isDark),
+                      colors: WatchTheme.getGradientColors(
+                        settings.backgroundTheme,
+                        isDark,
+                      ),
                     ),
                   ),
                 ),

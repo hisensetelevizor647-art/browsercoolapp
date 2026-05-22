@@ -11,6 +11,7 @@ import '../services/text_cleaner.dart';
 import '../services/watch_assistant_service.dart';
 import '../theme/watch_theme.dart';
 import 'settings_screen.dart';
+import 'voice_live_screen.dart';
 
 enum _PromptPanelMode { none, chat, device }
 
@@ -78,7 +79,7 @@ class _HomeScreenState extends State<HomeScreen>
       });
     } else if (widget.startInVoiceMode) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _startSuperVoiceMode();
+        _openVoiceLiveMode();
       });
     }
   }
@@ -208,8 +209,49 @@ class _HomeScreenState extends State<HomeScreen>
     await _startListening();
   }
 
+  Future<void> _openVoiceLiveMode() async {
+    if (_isListening) {
+      if (mounted) {
+        setState(() {
+          _isListening = false;
+        });
+      }
+      await _speech.stop();
+    }
+    if (!mounted) return;
+
+    setState(() {
+      _isListening = false;
+      _isSuperVoiceMode = false;
+      _superVoiceStatus = '';
+      _panelMode = _PromptPanelMode.none;
+      _showHistory = false;
+    });
+
+    await Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            VoiceLiveScreen(isRound: widget.isRound),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(
+            opacity: CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeInOut,
+            ),
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 400),
+      ),
+    );
+  }
+
   Future<void> _stopListening() async {
     if (!_isListening) return;
+    if (mounted) {
+      setState(() => _isListening = false);
+    }
     await _speech.stop();
     if (!mounted) return;
 
@@ -221,7 +263,6 @@ class _HomeScreenState extends State<HomeScreen>
           ? _deviceController.text
           : _chatController.text,
     );
-    setState(() => _isListening = false);
     if (spoken.isEmpty) {
       if (wasSuperVoice) {
         setState(() {
@@ -444,7 +485,7 @@ class _HomeScreenState extends State<HomeScreen>
     final cleaned = TextCleaner.clean(value).toLowerCase();
     return cleaned
         .replaceAll(
-          RegExp(r'[^0-9a-zа-яііїєґ._\-\s]+', caseSensitive: false),
+          RegExp('[^0-9a-z\\u0400-\\u04FF._\\-\\s]+', caseSensitive: false),
           ' ',
         )
         .replaceAll(RegExp(r'\s+'), ' ')
@@ -551,7 +592,10 @@ class _HomeScreenState extends State<HomeScreen>
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: WatchTheme.getGradientColors(
-              Provider.of<SettingsService>(context, listen: false).backgroundTheme,
+              Provider.of<SettingsService>(
+                context,
+                listen: false,
+              ).backgroundTheme,
               isDark,
             ),
           ),
@@ -642,7 +686,7 @@ class _HomeScreenState extends State<HomeScreen>
         children: [
           _buildSmallButton(
             icon: Icons.graphic_eq_rounded,
-            onPressed: _startSuperVoiceMode,
+            onPressed: () => _openVoiceLiveMode(),
             onLongPress: () => _openPanel(_PromptPanelMode.device),
             isActive:
                 _isSuperVoiceMode || _panelMode == _PromptPanelMode.device,
