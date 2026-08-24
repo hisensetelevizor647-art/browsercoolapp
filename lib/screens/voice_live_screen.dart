@@ -159,9 +159,11 @@ class _VoiceLiveScreenState extends State<VoiceLiveScreen>
     });
 
     _speech.listen(
-      listenMode: stt.ListenMode.dictation,
-      onDevice: true,
-      listenOptions: stt.SpeechListenOptions(partialResults: true),
+      listenOptions: stt.SpeechListenOptions(
+        listenMode: stt.ListenMode.dictation,
+        onDevice: true,
+        partialResults: true,
+      ),
       onResult: (result) {
         if (!mounted) return;
         setState(() {
@@ -489,7 +491,7 @@ class _VoiceLiveScreenState extends State<VoiceLiveScreen>
                       height: 260,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: (_isListening ? Colors.red : accent).withOpacity(
+                        color: (_isListening ? Colors.red.shade400 : accent).withOpacity(
                           pulse,
                         ),
                       ),
@@ -649,33 +651,33 @@ class _VoiceLiveScreenState extends State<VoiceLiveScreen>
                 ),
               // ── Logo circle ──
               Container(
-                width: 88,
-                height: 88,
+                width: 80,
+                height: 80,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: Colors.white,
                   border: Border.all(
                     color: ringActive
                         ? ringColor.withOpacity(0.5)
-                        : accent.withOpacity(0.2),
-                    width: 1.2,
+                        : accent.withOpacity(0.25),
+                    width: 1.5,
                   ),
                   boxShadow: [
                     BoxShadow(
                       color: (ringActive ? ringColor : accent).withOpacity(
                         ringActive ? 0.35 : 0.15,
                       ),
-                      blurRadius: ringActive ? 22 : 10,
-                      spreadRadius: ringActive ? 3 : 1,
+                      blurRadius: ringActive ? 18 : 8,
+                      spreadRadius: ringActive ? 2 : 1,
                     ),
                   ],
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.all(12),
                   child: ClipOval(
                     child: Image.asset(
                       'assets/icon/app_icon.png',
-                      fit: BoxFit.cover,
+                      fit: BoxFit.contain,
                     ),
                   ),
                 ),
@@ -775,7 +777,7 @@ class _VoiceLiveScreenState extends State<VoiceLiveScreen>
                             fontWeight: FontWeight.w600,
                             color: line.isUser
                                 ? theme.colorScheme.primary.withOpacity(0.9)
-                                : Colors.greenAccent.withOpacity(0.9),
+                                : Colors.greenAccent.shade200.withOpacity(0.9),
                           ),
                         ),
                         TextSpan(
@@ -971,7 +973,7 @@ class _VoiceLiveScreenState extends State<VoiceLiveScreen>
                 : _isListening
                 ? [
                     BoxShadow(
-                      color: Colors.redAccent.withOpacity(
+                      color: Colors.redAccent.shade200.withOpacity(
                         0.4 * _pulseController.value,
                       ),
                       blurRadius: 16 * _pulseController.value,

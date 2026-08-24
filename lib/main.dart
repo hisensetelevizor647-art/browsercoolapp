@@ -26,7 +26,11 @@ void main() async {
         ChangeNotifierProvider(
           create: (_) =>
               GeminiService()
-                ..init(settingsService.model, settingsService.language),
+                ..init(
+                  settingsService.model,
+                  settingsService.language,
+                  settingsService.thinkingLevel,
+                ),
         ),
       ],
       child: const MyApp(),
@@ -89,12 +93,12 @@ class WatchScreen extends StatelessWidget {
           builder: (context, mode, child) {
             return mode == WearMode.active
                 ? assistantMode
-                      ? AssistantScreen(isRound: isRound)
-                      : HomeScreen(
-                          openKeyboardOnStart: openKeyboardOnStart,
-                          startInVoiceMode: startInVoiceMode,
-                          isRound: isRound,
-                        )
+                    ? AssistantScreen(isRound: isRound)
+                    : HomeScreen(
+                        openKeyboardOnStart: openKeyboardOnStart,
+                        startInVoiceMode: startInVoiceMode,
+                        isRound: isRound,
+                      )
                 : const AmbientWatchFace();
           },
         );
@@ -136,33 +140,25 @@ class AmbientWatchFace extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Container(
-                      width: 68,
-                      height: 68,
+                      width: 64,
+                      height: 64,
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.blue.shade500.withOpacity(0.28),
-                            Colors.red.shade500.withOpacity(0.24),
-                            Colors.yellow.shade600.withOpacity(0.2),
-                            Colors.green.shade500.withOpacity(0.24),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(34),
+                        color: Colors.white,
+                        shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
                             color: theme.colorScheme.primary.withOpacity(0.25),
-                            blurRadius: 18,
+                            blurRadius: 16,
                             spreadRadius: 2,
                           ),
                         ],
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.all(5),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(30),
+                        padding: const EdgeInsets.all(10),
+                        child: ClipOval(
                           child: Image.asset(
                             'assets/icon/app_icon.png',
-                            fit: BoxFit.cover,
+                            fit: BoxFit.contain,
                           ),
                         ),
                       ),

@@ -58,6 +58,18 @@ class ChatHistoryService with ChangeNotifier {
     }
   }
 
+  List<ChatSession> filterSessions(String query) {
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return _sessions;
+    return _sessions.where((session) {
+      if (session.title.toLowerCase().contains(q)) return true;
+      for (final msg in session.messages) {
+        if ((msg['content'] ?? '').toLowerCase().contains(q)) return true;
+      }
+      return false;
+    }).toList();
+  }
+
   Future<File> get _sessionsFile async {
     final directory = await getApplicationDocumentsDirectory();
     return File('${directory.path}/chat_sessions.json');
@@ -139,24 +151,32 @@ class ChatHistoryService with ChangeNotifier {
       await createNewSession();
     }
 
-    final sessionIndex = _sessions.indexWhere((s) => s.id == _currentSessionId);
+    var sessionIndex = _sessions.indexWhere((s) => s.id == _currentSessionId);
+    if (sessionIndex == -1) {
+      final newId = await createNewSession();
+      sessionIndex = _sessions.indexWhere((s) => s.id == newId);
+    }
+
     if (sessionIndex != -1) {
       _sessions[sessionIndex].messages.add({
         'role': role,
         'content': cleanedContent,
       });
 
-      // Update title if it's the first user message
-      if (_sessions[sessionIndex].messages.length == 1 && role == 'user') {
-        final title = cleanedContent.length > 30
-            ? '${cleanedContent.substring(0, 30)}...'
-            : cleanedContent;
-        _sessions[sessionIndex] = ChatSession(
-          id: _sessions[sessionIndex].id,
-          title: title,
-          createdAt: _sessions[sessionIndex].createdAt,
-          messages: _sessions[sessionIndex].messages,
-        );
+      // Update title cleanly if it's the first user message
+      if (role == 'user' && _sessions[sessionIndex].messages.where((m) => m['role'] == 'user').length == 1) {
+        String generatedTitle = cleanedContent.replaceAll('\n', ' ').trim();
+        if (generatedTitle.length > 26) {
+          generatedTitle = '${generatedTitle.substring(0, 26)}...';
+        }
+        if (generatedTitle.isNotEmpty) {
+          _sessions[sessionIndex] = ChatSession(
+            id: _sessions[sessionIndex].id,
+            title: generatedTitle,
+            createdAt: _sessions[sessionIndex].createdAt,
+            messages: _sessions[sessionIndex].messages,
+          );
+        }
       }
 
       await _saveSessions();
@@ -168,6 +188,9 @@ class ChatHistoryService with ChangeNotifier {
     _sessions.removeWhere((s) => s.id == sessionId);
     if (_currentSessionId == sessionId) {
       _currentSessionId = _sessions.isNotEmpty ? _sessions.first.id : null;
+      if (_currentSessionId == null && _prefs != null) {
+        await _prefs!.remove(_currentSessionIdKey);
+      }
     }
     await _saveSessions();
     notifyListeners();

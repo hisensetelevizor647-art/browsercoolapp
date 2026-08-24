@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
@@ -51,6 +52,7 @@ class _HomeScreenState extends State<HomeScreen>
   final FocusNode _chatFocusNode = FocusNode();
   final TextEditingController _deviceController = TextEditingController();
   final FocusNode _deviceFocusNode = FocusNode();
+  final TextEditingController _historySearchController = TextEditingController();
   final WatchAssistantService _watchAssistantService = WatchAssistantService();
 
   bool _isListening = false;
@@ -63,6 +65,10 @@ class _HomeScreenState extends State<HomeScreen>
   _PromptPanelMode _listeningMode = _PromptPanelMode.chat;
   List<WatchAppInfo> _apps = const [];
 
+  // Voice recording timer
+  Timer? _recordTimer;
+  int _recordSeconds = 0;
+
   late AnimationController _pulseController;
 
   @override
@@ -70,8 +76,8 @@ class _HomeScreenState extends State<HomeScreen>
     super.initState();
     _pulseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat(reverse: true);
+      duration: const Duration(milliseconds: 1200),
+    );
 
     if (widget.openKeyboardOnStart) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -86,11 +92,13 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   void dispose() {
+    _recordTimer?.cancel();
     _pulseController.dispose();
     _chatController.dispose();
     _chatFocusNode.dispose();
     _deviceController.dispose();
     _deviceFocusNode.dispose();
+    _historySearchController.dispose();
     super.dispose();
   }
 
@@ -103,7 +111,6 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   dynamic _accentColor(ThemeData theme) => theme.colorScheme.primary;
-
   dynamic _accentDarkColor(ThemeData theme) => theme.colorScheme.secondary;
 
   Future<void> _startNewChat() async {
@@ -143,6 +150,7 @@ class _HomeScreenState extends State<HomeScreen>
       },
       onError: (_) {
         if (!mounted) return;
+        _stopRecordingTimer();
         setState(() => _isListening = false);
       },
     );
@@ -161,6 +169,7 @@ class _HomeScreenState extends State<HomeScreen>
       _listeningMode = listeningMode;
       _panelMode = listeningMode;
       _showHistory = false;
+      _recordSeconds = 0;
       if (listeningMode != _PromptPanelMode.device) {
         _isSuperVoiceMode = false;
       }
@@ -171,9 +180,16 @@ class _HomeScreenState extends State<HomeScreen>
         _superVoiceStatus = '';
       }
     });
+
+    _startRecordingTimer();
+    _pulseController.repeat(reverse: true);
+
     _speech.listen(
-      listenMode: stt.ListenMode.dictation,
-      onDevice: true,
+      listenOptions: stt.SpeechListenOptions(
+        listenMode: stt.ListenMode.dictation,
+        onDevice: true,
+        partialResults: true,
+      ),
       onResult: (val) {
         if (!mounted) return;
         setState(() {
@@ -185,6 +201,22 @@ class _HomeScreenState extends State<HomeScreen>
         });
       },
     );
+  }
+
+  void _startRecordingTimer() {
+    _recordTimer?.cancel();
+    _recordTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      setState(() {
+        _recordSeconds = timer.tick;
+      });
+    });
+  }
+
+  void _stopRecordingTimer() {
+    _recordTimer?.cancel();
+    _recordTimer = null;
+    _pulseController.stop();
   }
 
   Future<void> _startSuperVoiceMode() async {
@@ -211,6 +243,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   Future<void> _openVoiceLiveMode() async {
     if (_isListening) {
+      _stopRecordingTimer();
       if (mounted) {
         setState(() {
           _isListening = false;
@@ -242,13 +275,15 @@ class _HomeScreenState extends State<HomeScreen>
             child: child,
           );
         },
-        transitionDuration: const Duration(milliseconds: 400),
+        transitionDuration: const Duration(milliseconds: 300),
       ),
     );
   }
 
   Future<void> _stopListening() async {
     if (!_isListening) return;
+    _stopRecordingTimer();
+
     if (mounted) {
       setState(() => _isListening = false);
     }
@@ -324,16 +359,18 @@ class _HomeScreenState extends State<HomeScreen>
     final gemini = Provider.of<GeminiService>(context, listen: false);
     final history = Provider.of<ChatHistoryService>(context, listen: false);
     await history.addMessageToCurrentSession('user', cleanedText);
-    final reply = await gemini.sendMessage(cleanedText);
-    if (reply != null && !reply.startsWith('Error:')) {
-      await history.addMessageToCurrentSession('model', reply);
+
+    if (mounted) {
+      setState(() {
+        _chatController.clear();
+        _panelMode = _PromptPanelMode.none;
+      });
     }
 
-    if (!mounted) return;
-    setState(() {
-      _chatController.clear();
-      _panelMode = _PromptPanelMode.none;
-    });
+    final reply = await gemini.sendMessage(cleanedText);
+    if (reply != null && !reply.startsWith('Error:') && reply != 'Generation stopped') {
+      await history.addMessageToCurrentSession('model', reply);
+    }
   }
 
   Future<void> _loadChatSession(ChatSession session) async {
@@ -527,23 +564,81 @@ class _HomeScreenState extends State<HomeScreen>
     return filtered.join(' ').trim();
   }
 
+  String _formatTimer(int totalSeconds) {
+    final m = (totalSeconds ~/ 60).toString().padLeft(2, '0');
+    final s = (totalSeconds % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final gemini = Provider.of<GeminiService>(context);
+
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           _buildBackdrop(),
           _buildMainContent(),
-          if (_showHistory) _buildHistoryOverlay(),
-          if (_panelMode != _PromptPanelMode.none && !_isSuperVoiceMode)
-            _buildPromptPanel(),
+          if (_isListening) _buildRecordingBanner(theme),
           if (_isSuperVoiceMode || _superVoiceStatus.isNotEmpty)
             _buildSuperVoiceBadge(),
-          _buildTopControls(),
-          _buildBottomControls(),
+          if (_showHistory) _buildHistoryOverlay(),
+          if (_panelMode != _PromptPanelMode.none && !_isSuperVoiceMode)
+            _buildCurvedPromptPanel(),
+          if (_panelMode == _PromptPanelMode.none) ...[
+            _buildTopControls(),
+            _buildBottomControls(gemini),
+          ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildRecordingBanner(ThemeData theme) {
+    return Positioned(
+      top: widget.isRound ? 50 : 26,
+      left: 20,
+      right: 20,
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+          decoration: BoxDecoration(
+            color: Colors.red.shade900.withOpacity(0.9),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.red.shade600.withOpacity(0.4),
+                blurRadius: 10,
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                _formatTimer(_recordSeconds),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.1,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -556,12 +651,12 @@ class _HomeScreenState extends State<HomeScreen>
     return Positioned(
       left: widget.isRound ? 22 : 10,
       right: widget.isRound ? 22 : 10,
-      bottom: widget.isRound ? 102 : 74,
+      bottom: widget.isRound ? 95 : 74,
       child: IgnorePointer(
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: theme.colorScheme.surface.withOpacity(0.88),
+            color: theme.colorScheme.surface.withOpacity(0.9),
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
               color: theme.colorScheme.primary.withOpacity(0.4),
@@ -570,9 +665,10 @@ class _HomeScreenState extends State<HomeScreen>
           child: Text(
             text,
             maxLines: 1,
+            textAlign: TextAlign.center,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              fontSize: 11,
+              fontSize: 10,
               color: theme.colorScheme.onSurface.withOpacity(0.9),
             ),
           ),
@@ -585,65 +681,29 @@ class _HomeScreenState extends State<HomeScreen>
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return Positioned.fill(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: WatchTheme.getGradientColors(
-              Provider.of<SettingsService>(
-                context,
-                listen: false,
-              ).backgroundTheme,
-              isDark,
+    return RepaintBoundary(
+      child: Positioned.fill(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: WatchTheme.getGradientColors(
+                Provider.of<SettingsService>(
+                  context,
+                  listen: false,
+                ).backgroundTheme,
+                isDark,
+              ),
             ),
           ),
-        ),
-        child: Stack(
-          children: [
-            Positioned(
-              top: -72,
-              right: -24,
-              child: _buildGlow(
-                color: _accentColor(theme).withOpacity(isDark ? 0.3 : 0.2),
-                size: 180,
-              ),
-            ),
-            Positioned(
-              bottom: -90,
-              left: -44,
-              child: _buildGlow(
-                color: theme.colorScheme.secondary.withOpacity(
-                  isDark ? 0.24 : 0.16,
-                ),
-                size: 220,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGlow({required dynamic color, required double size}) {
-    return IgnorePointer(
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: color,
-          boxShadow: [
-            BoxShadow(color: color, blurRadius: size * 0.35, spreadRadius: 8),
-          ],
         ),
       ),
     );
   }
 
   Widget _buildTopControls() {
-    final topInset = widget.isRound ? 32.0 : 10.0;
+    final topInset = widget.isRound ? 28.0 : 8.0;
     return Positioned(
       top: topInset,
       left: widget.isRound ? 14 : 4,
@@ -675,8 +735,10 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _buildBottomControls() {
-    final bottomInset = widget.isRound ? 30.0 : 10.0;
+  Widget _buildBottomControls(GeminiService gemini) {
+    final bottomInset = widget.isRound ? 22.0 : 6.0;
+    final isGenerating = gemini.isLoading;
+
     return Positioned(
       bottom: bottomInset,
       left: widget.isRound ? 14 : 4,
@@ -687,20 +749,30 @@ class _HomeScreenState extends State<HomeScreen>
           _buildSmallButton(
             icon: Icons.graphic_eq_rounded,
             onPressed: () => _openVoiceLiveMode(),
-            onLongPress: () => _openPanel(_PromptPanelMode.device),
+            onLongPress: () => _startSuperVoiceMode(),
             isActive:
                 _isSuperVoiceMode || _panelMode == _PromptPanelMode.device,
-            size: 40,
+            size: 38,
           ),
           const SizedBox(width: 14),
-          _buildMicButton(),
+          _buildMicOrStopButton(),
           const SizedBox(width: 14),
-          _buildSmallButton(
-            icon: Icons.keyboard_rounded,
-            onPressed: () => _openPanel(_PromptPanelMode.chat),
-            isActive: _panelMode == _PromptPanelMode.chat,
-            size: 40,
-          ),
+          // If generating, show Stop button; otherwise show Keyboard button
+          if (isGenerating)
+            _buildSmallButton(
+              icon: Icons.stop_rounded,
+              onPressed: () => gemini.stopGeneration(),
+              isActive: true,
+              size: 38,
+              customColor: Colors.redAccent,
+            )
+          else
+            _buildSmallButton(
+              icon: Icons.keyboard_rounded,
+              onPressed: () => _openPanel(_PromptPanelMode.chat),
+              isActive: _panelMode == _PromptPanelMode.chat,
+              size: 38,
+            ),
         ],
       ),
     );
@@ -711,12 +783,13 @@ class _HomeScreenState extends State<HomeScreen>
     required void Function() onPressed,
     void Function()? onLongPress,
     bool isActive = false,
-    double size = 42,
+    double size = 38,
+    Color? customColor,
   }) {
     final theme = Theme.of(context);
     final onSurface = theme.colorScheme.onSurface;
     final baseColor = theme.colorScheme.surface;
-    final accent = _accentColor(theme);
+    final accent = customColor ?? _accentColor(theme);
     final isDark = theme.brightness == Brightness.dark;
 
     return Container(
@@ -725,15 +798,20 @@ class _HomeScreenState extends State<HomeScreen>
       decoration: BoxDecoration(
         gradient: isActive
             ? LinearGradient(
-                colors: [accent, _accentDarkColor(theme)],
+                colors: [accent, customColor ?? _accentDarkColor(theme)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               )
             : LinearGradient(
-                colors: [
-                  baseColor.withOpacity(isDark ? 0.78 : 0.94),
-                  baseColor.withOpacity(isDark ? 0.64 : 0.82),
-                ],
+                colors: isDark
+                    ? const [
+                        Color(0xFF181818),
+                        Color(0xFF0E0E0E),
+                      ]
+                    : [
+                        baseColor.withOpacity(0.94),
+                        baseColor.withOpacity(0.82),
+                      ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -741,14 +819,11 @@ class _HomeScreenState extends State<HomeScreen>
         border: Border.all(
           color: isActive
               ? accent.withOpacity(0.95)
-              : onSurface.withOpacity(isDark ? 0.24 : 0.12),
+              : isDark
+                  ? const Color(0xFF2A2A2A)
+                  : onSurface.withOpacity(0.14),
+          width: isDark ? 1.0 : 0.8,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: theme.shadowColor.withOpacity(isDark ? 0.5 : 0.12),
-            blurRadius: 10,
-          ),
-        ],
       ),
       child: Material(
         color: Colors.transparent,
@@ -759,7 +834,7 @@ class _HomeScreenState extends State<HomeScreen>
           onLongPress: onLongPress,
           child: Icon(
             icon,
-            size: size * 0.5,
+            size: size * 0.52,
             color: isActive ? theme.colorScheme.onPrimary : onSurface,
           ),
         ),
@@ -767,42 +842,55 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _buildMicButton() {
+  Widget _buildMicOrStopButton() {
     final theme = Theme.of(context);
     final accent = _accentColor(theme);
-    final onPrimary = theme.colorScheme.onPrimary;
-    return AnimatedBuilder(
-      animation: _pulseController,
-      builder: (context, child) {
-        return Container(
-          width: 60,
-          height: 60,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            boxShadow: _isListening
-                ? [
-                    BoxShadow(
-                      color: accent.withOpacity(0.5 * _pulseController.value),
-                      blurRadius: 15 * _pulseController.value,
-                      spreadRadius: 5 * _pulseController.value,
-                    ),
-                  ]
-                : [],
-          ),
-          child: FloatingActionButton(
-            heroTag: "mic",
-            elevation: 4,
-            onPressed: _isListening ? _stopListening : _startListening,
-            backgroundColor: _isListening ? Colors.redAccent : accent,
-            shape: const CircleBorder(),
-            child: Icon(
-              _isListening ? Icons.mic_off_rounded : Icons.mic_rounded,
+
+    if (_isListening) {
+      // Square stop recording button with timer
+      return Container(
+        width: 52,
+        height: 52,
+        decoration: BoxDecoration(
+          color: Colors.redAccent,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.redAccent.shade200.withOpacity(0.5),
+              blurRadius: 12,
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: _stopListening,
+            child: const Icon(
+              Icons.stop_rounded,
               size: 28,
-              color: onPrimary,
+              color: Colors.white,
             ),
           ),
-        );
-      },
+        ),
+      );
+    }
+
+    return SizedBox(
+      width: 52,
+      height: 52,
+      child: FloatingActionButton(
+        heroTag: "mic_main",
+        elevation: 3,
+        onPressed: _startListening,
+        backgroundColor: accent,
+        shape: const CircleBorder(),
+        child: Icon(
+          Icons.mic_rounded,
+          size: 26,
+          color: theme.colorScheme.onPrimary,
+        ),
+      ),
     );
   }
 
@@ -820,51 +908,50 @@ class _HomeScreenState extends State<HomeScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const SizedBox(height: 20),
+                const SizedBox(height: 12),
+                // Properly sized, non-inverted watch logo container
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  width: 64,
+                  height: 64,
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        accent.withOpacity(0.2),
-                        accentDark.withOpacity(0.2),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
+                    color: Colors.white,
                     shape: BoxShape.circle,
+                    border: Border.all(
+                      color: accent.withOpacity(0.3),
+                      width: 1.5,
+                    ),
                     boxShadow: [
                       BoxShadow(
-                        color: accent.withOpacity(0.3),
-                        blurRadius: 20,
-                        spreadRadius: 5,
+                        color: accent.withOpacity(0.25),
+                        blurRadius: 14,
+                        spreadRadius: 2,
                       ),
                     ],
                   ),
                   child: ClipOval(
                     child: Image.asset(
                       'assets/icon/app_icon.png',
-                      width: 70,
-                      height: 70,
-                      fit: BoxFit.cover,
+                      fit: BoxFit.contain,
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 10),
                 Text(
                   settings.modelDisplayName.toUpperCase(),
                   style: TextStyle(
-                    color: onSurface.withOpacity(0.55),
+                    color: onSurface.withOpacity(0.65),
                     fontSize: 10,
-                    letterSpacing: 1.2,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.1,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text(
                   l10n.tapToSpeak,
                   style: TextStyle(
-                    color: onSurface.withOpacity(0.62),
-                    fontSize: 13,
+                    color: onSurface.withOpacity(0.7),
+                    fontSize: 11,
                   ),
                 ),
               ],
@@ -874,35 +961,35 @@ class _HomeScreenState extends State<HomeScreen>
 
         return ListView.builder(
           padding: EdgeInsets.fromLTRB(
-            widget.isRound ? 28 : 14,
-            widget.isRound ? 68 : 42,
-            widget.isRound ? 28 : 14,
-            widget.isRound ? 145 : 122,
+            widget.isRound ? 24 : 10,
+            widget.isRound ? 56 : 38,
+            widget.isRound ? 24 : 10,
+            widget.isRound ? 115 : 95,
           ),
           itemCount: gemini.chatHistory.length + (gemini.isLoading ? 1 : 0),
           itemBuilder: (context, index) {
             if (index == gemini.chatHistory.length) {
               return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 12),
+                padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Center(
                   child: Column(
                     children: [
                       SizedBox(
-                        width: 20,
-                        height: 20,
+                        width: 18,
+                        height: 18,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
                           valueColor: AlwaysStoppedAnimation(
-                            accent.withOpacity(0.6),
+                            accent.withOpacity(0.8),
                           ),
                         ),
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 4),
                       Text(
                         l10n.thinkingForSeconds(gemini.thinkingSeconds),
                         style: TextStyle(
                           fontSize: 10,
-                          color: onSurface.withOpacity(0.7),
+                          color: onSurface.withOpacity(0.75),
                         ),
                       ),
                     ],
@@ -913,18 +1000,19 @@ class _HomeScreenState extends State<HomeScreen>
             final content = gemini.chatHistory[index];
             final isUser = content.role != 'model';
             final text = _extractContentText(content);
-            final modelBubble = theme.colorScheme.surface;
+            final isDark = theme.brightness == Brightness.dark;
+            final modelBubble = isDark ? const Color(0xFF161616) : theme.colorScheme.surface;
 
             return Align(
               alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
               child: Container(
-                margin: const EdgeInsets.symmetric(vertical: 4),
+                margin: const EdgeInsets.symmetric(vertical: 3),
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
+                  horizontal: 10,
+                  vertical: 8,
                 ),
                 constraints: BoxConstraints(
-                  maxWidth: MediaQuery.of(context).size.width * 0.82,
+                  maxWidth: MediaQuery.of(context).size.width * 0.85,
                 ),
                 decoration: BoxDecoration(
                   gradient: isUser
@@ -934,16 +1022,29 @@ class _HomeScreenState extends State<HomeScreen>
                           end: Alignment.bottomRight,
                         )
                       : LinearGradient(
-                          colors: [
-                            modelBubble.withOpacity(0.95),
-                            modelBubble.withOpacity(0.86),
-                          ],
+                          colors: isDark
+                              ? const [
+                                  Color(0xFF161616),
+                                  Color(0xFF111111),
+                                ]
+                              : [
+                                  modelBubble.withOpacity(0.95),
+                                  modelBubble.withOpacity(0.88),
+                                ],
                         ),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: isUser
+                        ? Colors.transparent
+                        : isDark
+                            ? const Color(0xFF262626)
+                            : theme.colorScheme.outline.withOpacity(0.15),
+                    width: 0.8,
+                  ),
                   boxShadow: [
                     BoxShadow(
-                      color: theme.shadowColor.withOpacity(0.18),
-                      blurRadius: 8,
+                      color: theme.shadowColor.withOpacity(isDark ? 0.35 : 0.12),
+                      blurRadius: 6,
                     ),
                   ],
                 ),
@@ -951,7 +1052,7 @@ class _HomeScreenState extends State<HomeScreen>
                   text,
                   style: TextStyle(
                     color: isUser ? theme.colorScheme.onPrimary : onSurface,
-                    fontSize: 13,
+                    fontSize: 11,
                   ),
                 ),
               ),
@@ -962,181 +1063,163 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _buildPromptPanel() {
+  // Semicircular bottom curved panel for prompt / keyboard input
+  Widget _buildCurvedPromptPanel() {
     final settings = Provider.of<SettingsService>(context, listen: false);
     final l10n = AppLocalizer.fromCode(settings.language);
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final accent = _accentColor(theme);
-    final accentDark = _accentDarkColor(theme);
     final isDevice = _panelMode == _PromptPanelMode.device;
     final controller = isDevice ? _deviceController : _chatController;
     final focusNode = isDevice ? _deviceFocusNode : _chatFocusNode;
 
     return Positioned(
-      left: widget.isRound ? 16 : 6,
-      right: widget.isRound ? 16 : 6,
-      bottom: widget.isRound ? 102 : 80,
+      left: 0,
+      right: 0,
+      bottom: 0,
       child: Container(
-        constraints: BoxConstraints(
-          minHeight: 80,
-          maxHeight: isDevice ? 180 : 110,
+        padding: EdgeInsets.fromLTRB(
+          widget.isRound ? 20 : 12,
+          10,
+          widget.isRound ? 20 : 12,
+          widget.isRound ? 24 : 12,
         ),
-        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              theme.colorScheme.surface.withOpacity(0.97),
-              theme.colorScheme.surfaceContainerHighest.withOpacity(0.42),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: theme.colorScheme.outline.withOpacity(0.28),
+          color: isDark
+              ? const Color(0xFF0F0F0F)
+              : theme.colorScheme.surface.withOpacity(0.98),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          border: Border(
+            top: BorderSide(
+              color: isDark ? accent.withOpacity(0.6) : accent.withOpacity(0.4),
+              width: 1.5,
+            ),
           ),
           boxShadow: [
             BoxShadow(
-              color: theme.shadowColor.withOpacity(0.16),
-              blurRadius: 14,
+              color: Colors.black.withOpacity(isDark ? 0.7 : 0.4),
+              blurRadius: 16,
+              offset: const Offset(0, -4),
             ),
           ],
         ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              isDevice ? l10n.deviceControl : l10n.chatInput,
-              style: TextStyle(
-                fontSize: 11,
-                color: theme.colorScheme.onSurface.withOpacity(0.7),
-              ),
+            Row(
+              children: [
+                Text(
+                  isDevice ? l10n.deviceControl : l10n.chatInput,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: accent,
+                  ),
+                ),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => setState(() => _panelMode = _PromptPanelMode.none),
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.onSurface.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 16,
+                      color: theme.colorScheme.onSurface.withOpacity(0.8),
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 6),
             Row(
               children: [
                 Expanded(
-                  child: TextField(
-                    controller: controller,
-                    focusNode: focusNode,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: theme.colorScheme.onSurface,
-                    ),
-                    decoration: InputDecoration(
-                      isDense: true,
-                      hintText: isDevice
-                          ? l10n.devicePromptHint
-                          : l10n.chatPromptHint,
-                      hintStyle: TextStyle(
-                        fontSize: 11,
-                        color: theme.colorScheme.onSurface.withOpacity(0.4),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: theme.colorScheme.outline.withOpacity(0.3),
                       ),
                     ),
-                    onSubmitted: (_) => isDevice
-                        ? _openAppFromPrompt()
-                        : _sendChatMessage(controller.text),
+                    child: TextField(
+                      controller: controller,
+                      focusNode: focusNode,
+                      keyboardType: TextInputType.text,
+                      textInputAction: TextInputAction.send,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      enableInteractiveSelection: true,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        hintText: isDevice
+                            ? l10n.devicePromptHint
+                            : l10n.chatPromptHint,
+                        hintStyle: TextStyle(
+                          fontSize: 10,
+                          color: theme.colorScheme.onSurface.withOpacity(0.45),
+                        ),
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 6),
+                      ),
+                      onSubmitted: (_) => isDevice
+                          ? _openAppFromPrompt()
+                          : _sendChatMessage(controller.text),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 6),
                 SizedBox(
-                  width: 34,
-                  height: 34,
+                  width: 32,
+                  height: 32,
                   child: FloatingActionButton(
                     heroTag: isDevice ? 'device_send' : 'chat_send',
                     mini: true,
+                    elevation: 1,
                     onPressed: isDevice
                         ? _openAppFromPrompt
                         : () => _sendChatMessage(controller.text),
                     backgroundColor: accent,
                     child: Icon(
                       isDevice ? Icons.open_in_new_rounded : Icons.send_rounded,
-                      size: 16,
+                      size: 15,
                       color: theme.colorScheme.onPrimary,
                     ),
                   ),
                 ),
               ],
             ),
-            if (isDevice) ...[
-              const SizedBox(height: 8),
-              if (_isLoadingApps)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Text(
-                    '${l10n.deviceControl}...',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: theme.colorScheme.onSurface.withOpacity(0.6),
-                    ),
-                  ),
-                ),
-              if (_deviceStatus.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Text(
-                    _deviceStatus,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: theme.colorScheme.onSurface.withOpacity(0.85),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              Expanded(
+            if (isDevice && _apps.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              SizedBox(
+                height: 55,
                 child: ListView.builder(
-                  padding: EdgeInsets.zero,
-                  itemCount: _apps.length > 6 ? 6 : _apps.length,
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _apps.length > 8 ? 8 : _apps.length,
                   itemBuilder: (context, index) {
                     final app = _apps[index];
                     return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 1),
-                      child: InkWell(
-                        onTap: () => _openApp(app),
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                theme.colorScheme.surfaceContainerHighest
-                                    .withOpacity(0.42),
-                                accentDark.withOpacity(0.08),
-                              ],
-                            ),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  app.appName,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: theme.colorScheme.onSurface,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              Icon(
-                                Icons.open_in_new_rounded,
-                                size: 12,
-                                color: theme.colorScheme.onSurface.withOpacity(
-                                  0.7,
-                                ),
-                              ),
-                            ],
-                          ),
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ActionChip(
+                        label: Text(
+                          app.appName,
+                          style: const TextStyle(fontSize: 9),
                         ),
+                        onPressed: () => _openApp(app),
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
                       ),
                     );
                   },
@@ -1149,37 +1232,98 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  // Searchable & Deletable Chat History Overlay
   Widget _buildHistoryOverlay() {
     return Consumer2<ChatHistoryService, SettingsService>(
       builder: (context, historyService, settings, _) {
         final l10n = AppLocalizer.fromCode(settings.language);
-        final sessions = historyService.sessions;
         final theme = Theme.of(context);
         final accent = _accentColor(theme);
+        final searchQuery = _historySearchController.text;
+        final sessions = historyService.filterSessions(searchQuery);
+
+        final isDark = theme.brightness == Brightness.dark;
 
         return Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                theme.colorScheme.scrim.withOpacity(0.84),
-                theme.colorScheme.scrim.withOpacity(0.74),
-              ],
-            ),
+          color: isDark
+              ? Colors.black.withOpacity(0.96)
+              : theme.colorScheme.scrim.withOpacity(0.88),
+          padding: EdgeInsets.fromLTRB(
+            widget.isRound ? 16 : 8,
+            widget.isRound ? 24 : 10,
+            widget.isRound ? 16 : 8,
+            widget.isRound ? 16 : 8,
           ),
           child: Column(
             children: [
-              const SizedBox(height: 46),
               Text(
                 l10n.chatHistory,
                 style: TextStyle(
                   color: accent,
-                  fontSize: 12,
-                  letterSpacing: 1.4,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 6),
+              // Search input
+              Container(
+                height: 28,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? const Color(0xFF141414)
+                      : theme.colorScheme.surface.withOpacity(0.85),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: isDark
+                        ? const Color(0xFF2C2C2C)
+                        : accent.withOpacity(0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.search_rounded,
+                      size: 13,
+                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: TextField(
+                        controller: _historySearchController,
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: theme.colorScheme.onSurface,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: l10n.searchHistory,
+                          hintStyle: TextStyle(
+                            fontSize: 9,
+                            color: theme.colorScheme.onSurface.withOpacity(0.45),
+                          ),
+                          isDense: true,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
+                    if (_historySearchController.text.isNotEmpty)
+                      GestureDetector(
+                        onTap: () => setState(() => _historySearchController.clear()),
+                        child: Icon(
+                          Icons.close_rounded,
+                          size: 13,
+                          color: theme.colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 6),
               Expanded(
                 child: sessions.isEmpty
                     ? Center(
@@ -1187,76 +1331,88 @@ class _HomeScreenState extends State<HomeScreen>
                           l10n.noHistory,
                           style: TextStyle(
                             color: theme.colorScheme.onSurface.withOpacity(0.7),
+                            fontSize: 11,
                           ),
                         ),
                       )
                     : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        padding: EdgeInsets.zero,
                         itemCount: sessions.length,
                         itemBuilder: (context, index) {
                           final session = sessions[index];
                           final isActive =
                               session.id == historyService.currentSessionId;
                           return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 4),
-                            child: InkWell(
-                              onTap: () => _loadChatSession(session),
-                              borderRadius: BorderRadius.circular(12),
-                              child: Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
+                            padding: const EdgeInsets.symmetric(vertical: 2),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isActive
+                                    ? accent.withOpacity(0.2)
+                                    : isDark
+                                        ? const Color(0xFF141414)
+                                        : theme.colorScheme.surface.withOpacity(0.7),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
                                   color: isActive
-                                      ? accent.withOpacity(0.18)
-                                      : theme.colorScheme.surface.withOpacity(
-                                          0.74,
-                                        ),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: isActive
-                                        ? accent.withOpacity(0.52)
-                                        : theme.colorScheme.outline.withOpacity(
-                                            0.25,
-                                          ),
-                                  ),
+                                      ? accent.withOpacity(0.55)
+                                      : isDark
+                                          ? const Color(0xFF242424)
+                                          : theme.colorScheme.outline.withOpacity(0.2),
                                 ),
-                                child: Row(
-                                  children: [
-                                    Expanded(
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: InkWell(
+                                      onTap: () => _loadChatSession(session),
                                       child: Text(
-                                        TextCleaner.clean(session.title),
+                                        session.title,
                                         style: TextStyle(
                                           color: theme.colorScheme.onSurface,
-                                          fontSize: 12,
+                                          fontSize: 10,
+                                          fontWeight: isActive
+                                              ? FontWeight.bold
+                                              : FontWeight.normal,
                                         ),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
-                                    if (isActive)
-                                      Icon(
-                                        Icons.check_circle,
-                                        color: accent,
-                                        size: 14,
-                                      ),
-                                  ],
-                                ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  GestureDetector(
+                                    onTap: () async {
+                                      await historyService.deleteSession(session.id);
+                                    },
+                                    child: Icon(
+                                      Icons.delete_outline_rounded,
+                                      color: Colors.redAccent.shade100,
+                                      size: 15,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           );
                         },
                       ),
               ),
-              TextButton(
-                onPressed: () => setState(() => _showHistory = false),
+              const SizedBox(height: 4),
+              GestureDetector(
+                onTap: () => setState(() => _showHistory = false),
                 child: Text(
                   l10n.close.toUpperCase(),
                   style: TextStyle(
                     color: theme.colorScheme.onSurface.withOpacity(0.7),
-                    fontSize: 11,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
             ],
           ),
         );

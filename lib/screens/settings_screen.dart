@@ -70,6 +70,8 @@ class SettingsScreen extends StatelessWidget {
               child: Consumer<SettingsService>(
                 builder: (context, settings, child) {
                   final l10n = AppLocalizer.fromCode(settings.language);
+                  final isUltra = settings.model == SettingsService.modelUltra;
+
                   return Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -105,6 +107,26 @@ class SettingsScreen extends StatelessWidget {
                                 model['name']!,
                               );
                             }),
+                            if (isUltra) ...[
+                              const Divider(height: 14, thickness: 0.5),
+                              Text(
+                                l10n.thinkingMode,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: theme.colorScheme.onSurface.withOpacity(0.65),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                children: [
+                                  _buildThinkingChip(context, settings, 'off', l10n.thinkingOff),
+                                  _buildThinkingChip(context, settings, 'low', l10n.thinkingLow),
+                                  _buildThinkingChip(context, settings, 'medium', l10n.thinkingMedium),
+                                  _buildThinkingChip(context, settings, 'high', l10n.thinkingHigh),
+                                ],
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -178,7 +200,7 @@ class SettingsScreen extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              'Background Theme',
+                              'Theme',
                               style: const TextStyle(fontSize: 12),
                             ),
                             DropdownButton<String>(
@@ -276,20 +298,60 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
+  Widget _buildThinkingChip(
+    BuildContext context,
+    SettingsService settings,
+    String level,
+    String label,
+  ) {
+    final theme = Theme.of(context);
+    final isSelected = settings.thinkingLevel == level;
+    final accent = _accentColor(theme);
+
+    return InkWell(
+      onTap: () {
+        settings.setThinkingLevel(level);
+        Provider.of<GeminiService>(context, listen: false).updateThinkingLevel(level);
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+        decoration: BoxDecoration(
+          color: isSelected ? accent.withOpacity(0.3) : theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isSelected ? accent : theme.colorScheme.outline.withOpacity(0.2),
+            width: isSelected ? 1.2 : 0.8,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 9,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            color: isSelected ? accent : theme.colorScheme.onSurface.withOpacity(0.8),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildSectionCard(ThemeData theme, {required Widget child}) {
+    final isDark = theme.brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            theme.colorScheme.surface.withOpacity(0.96),
-            theme.colorScheme.surfaceContainerHighest.withOpacity(0.36),
-          ],
-        ),
+        color: isDark ? const Color(0xFF121212) : theme.colorScheme.surface.withOpacity(0.96),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.24)),
+        border: Border.all(
+          color: isDark ? const Color(0xFF242424) : theme.colorScheme.outline.withOpacity(0.24),
+          width: 0.9,
+        ),
         boxShadow: [
-          BoxShadow(color: theme.shadowColor.withOpacity(0.14), blurRadius: 10),
+          BoxShadow(
+            color: theme.shadowColor.withOpacity(isDark ? 0.4 : 0.14),
+            blurRadius: 8,
+          ),
         ],
       ),
       child: child,

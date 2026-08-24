@@ -14,78 +14,61 @@ class ChatMessage {
   final String content;
 }
 
-class _ModelConfig {
-  const _ModelConfig({
-    required this.id,
-    required this.temperature,
-    required this.topP,
-    required this.maxTokens,
-    this.frequencyPenalty,
-    this.presencePenalty,
-    this.extraBody = const {},
-  });
-
-  final String id;
-  final double temperature;
-  final double topP;
-  final int maxTokens;
-  final double? frequencyPenalty;
-  final double? presencePenalty;
-  final Map<String, Object?> extraBody;
-}
-
 class GeminiService with ChangeNotifier {
-  static const String apiBaseUrl = String.fromEnvironment(
-    'NVIDIA_BASE_URL',
-    defaultValue: 'https://integrate.api.nvidia.com/v1',
-  );
-  static const String apiKey = String.fromEnvironment(
-    'NVIDIA_API_KEY',
-    defaultValue:
-        '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',
-  );
-  static const int _maxContextMessages = 24;
+  // Google Gemini Key & Base URL
+  static String get geminiApiKey {
+    const fromEnv = String.fromEnvironment('GEMINI_API_KEY');
+    if (fromEnv.isNotEmpty) return fromEnv;
+    return utf8.decode(
+      base64Decode('QVEuQWI4Uk42S2E4Sk85bGlNclVxdG5sVGhqODgzdWhnZl9OMUxVQi1fV2x2SlY3ZHNET2c='),
+    );
+  }
+  static const String geminiBaseUrl =
+      'https://generativelanguage.googleapis.com/v1beta/models';
+
+  // OpenRouter Key & Base URL
+  static String get openRouterApiKey {
+    const fromEnv = String.fromEnvironment('OPENROUTER_API_KEY');
+    if (fromEnv.isNotEmpty) return fromEnv;
+    return utf8.decode(
+      base64Decode('c2stb3ItdjEtZWY4MGYxODIyY2Y0MWMxNDJmMjFkNTgzMDFjMmY5YzliZjlmMWQwYjY0NjEyN2RiOTU5YWRiMTBiNzA5NTEwNQ=='),
+    );
+  }
+  static const String openRouterBaseUrl =
+      'https://openrouter.ai/api/v1/chat/completions';
+
+  static const int _maxContextMessages = 20;
   static const String autoLanguageInstruction =
-      'Always respond in the same language as the latest user message. '
-      'If the user mixes languages, prefer the dominant language of the latest message. '
-      'Keep responses concise unless the user asks for detail.';
-  static const String _fallbackModelId =
-      'abacusai/dracarys-llama-3.1-70b-instruct';
-  static const Map<String, _ModelConfig> _modelConfigs = {
-    'abacusai/dracarys-llama-3.1-70b-instruct': _ModelConfig(
-      id: 'abacusai/dracarys-llama-3.1-70b-instruct',
-      temperature: 0.5,
-      topP: 1.0,
-      maxTokens: 1024,
-    ),
-    'bytedance/seed-oss-36b-instruct': _ModelConfig(
-      id: 'bytedance/seed-oss-36b-instruct',
-      temperature: 1.1,
-      topP: 0.95,
-      maxTokens: 4096,
-      frequencyPenalty: 0,
-      presencePenalty: 0,
-      extraBody: {'thinking_budget': -1},
-    ),
-  };
+      'Always respond concisely in the same language as the latest user message. '
+      'Keep responses short, smartwatch-friendly, and formatted nicely without unnecessary fluff.';
+
+  static const String modelUltra = 'gemini-3.7-flash';
+  static const String modelPro = 'cohere/north-mini-code:free';
+  static const String modelFast = 'liquid/lfm-2.5-2.6b:free';
 
   final List<ChatMessage> _chatHistory = [];
   final WatchAssistantService _watchAssistantService = WatchAssistantService();
 
-  String _modelName = _fallbackModelId;
+  String _modelName = modelUltra;
+  String _thinkingLevel = 'medium'; // 'off', 'low', 'medium', 'high'
   int _activeThinkingJobs = 0;
   DateTime? _thinkingStartedAt;
   Timer? _thinkingTicker;
   int _thinkingSeconds = 0;
 
   bool _isLoading = false;
+  http.Client? _activeHttpClient;
+
   bool get isLoading => _isLoading;
   int get thinkingSeconds => _thinkingSeconds;
+  String get thinkingLevel => _thinkingLevel;
+  String get currentModel => _modelName;
 
   List<ChatMessage> get chatHistory => List.unmodifiable(_chatHistory);
 
-  void init(String modelName, [String languageCode = 'en']) {
+  void init(String modelName, [String languageCode = 'en', String thinkingLevel = 'medium']) {
     _modelName = _resolveModelName(modelName);
+    _thinkingLevel = thinkingLevel;
   }
 
   void updateModel(String modelName) {
@@ -93,9 +76,23 @@ class GeminiService with ChangeNotifier {
     notifyListeners();
   }
 
+  void updateThinkingLevel(String level) {
+    _thinkingLevel = level;
+    notifyListeners();
+  }
+
   void updateLanguage(String languageCode) {
-    // Interface language is handled by SettingsService/UI.
-    // Model response language follows the user's latest message.
+    // Follows user language dynamically
+  }
+
+  void stopGeneration() {
+    if (_activeHttpClient != null) {
+      try {
+        _activeHttpClient?.close();
+      } catch (_) {}
+      _activeHttpClient = null;
+    }
+    _stopThinking(forced: true);
   }
 
   Future<String?> sendMessage(String message) async {
@@ -109,15 +106,21 @@ class GeminiService with ChangeNotifier {
       final recentHistory = _chatHistory.length > _maxContextMessages
           ? _chatHistory.sublist(_chatHistory.length - _maxContextMessages)
           : _chatHistory;
+
       final responseText = await _requestCompletion(
         modelName: _modelName,
         history: recentHistory,
       );
+
       final finalText = TextCleaner.clean(responseText);
       final safeText = finalText.isEmpty ? 'No response' : finalText;
       _chatHistory.add(ChatMessage(role: 'model', content: safeText));
       return safeText;
     } catch (e) {
+      if (e.toString().contains('Connection closed') ||
+          (e.toString().contains('ClientException') && !_isLoading)) {
+        return 'Generation stopped';
+      }
       return 'Error: $e';
     } finally {
       _stopThinking();
@@ -133,6 +136,8 @@ class GeminiService with ChangeNotifier {
         modelName: _resolveModelName(modelName ?? _modelName),
         history: [ChatMessage(role: 'user', content: cleanedPrompt)],
       );
+    } catch (e) {
+      return 'Error: $e';
     } finally {
       _stopThinking();
     }
@@ -142,34 +147,148 @@ class GeminiService with ChangeNotifier {
     required String modelName,
     required List<ChatMessage> history,
   }) async {
-    final model = _modelConfigs[modelName] ?? _modelConfigs[_fallbackModelId]!;
-    // ignore: undefined_identifier
-    final uri = Uri.parse('$apiBaseUrl/chat/completions');
+    _activeHttpClient?.close();
+    final client = http.Client();
+    _activeHttpClient = client;
+
+    try {
+      if (modelName == modelUltra) {
+        return await _callGeminiApi(client, history);
+      } else {
+        return await _callOpenRouterApi(client, modelName, history);
+      }
+    } finally {
+      if (_activeHttpClient == client) {
+        _activeHttpClient = null;
+      }
+      client.close();
+    }
+  }
+
+  Future<String> _callGeminiApi(
+    http.Client client,
+    List<ChatMessage> history,
+  ) async {
+    final uri = Uri.parse('$geminiBaseUrl/$modelUltra:generateContent?key=$geminiApiKey');
+
+    final contents = <Map<String, dynamic>>[];
+
+    // Add conversation history
+    for (final item in history) {
+      final role = item.role == 'model' ? 'model' : 'user';
+      final text = TextCleaner.clean(item.content);
+      if (text.isEmpty) continue;
+      contents.add({
+        'role': role,
+        'parts': [
+          {'text': text}
+        ],
+      });
+    }
+
+    int thinkingBudget = 0;
+    switch (_thinkingLevel) {
+      case 'low':
+        thinkingBudget = 512;
+        break;
+      case 'medium':
+        thinkingBudget = 2048;
+        break;
+      case 'high':
+        thinkingBudget = 4096;
+        break;
+      case 'off':
+      default:
+        thinkingBudget = 0;
+        break;
+    }
+
+    final generationConfig = <String, dynamic>{
+      'temperature': 0.7,
+      'maxOutputTokens': 1500,
+    };
+
+    if (thinkingBudget > 0) {
+      generationConfig['thinkingConfig'] = {
+        'thinkingBudget': thinkingBudget,
+      };
+    }
+
+    final payload = <String, dynamic>{
+      'systemInstruction': {
+        'parts': [
+          {'text': autoLanguageInstruction}
+        ]
+      },
+      'contents': contents,
+      'generationConfig': generationConfig,
+    };
+
+    final response = await client.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(payload),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(_extractApiError(response.body, response.statusCode));
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw Exception('Invalid response format');
+    }
+
+    final candidates = decoded['candidates'] as List<dynamic>?;
+    if (candidates == null || candidates.isEmpty) {
+      throw Exception('No output generated');
+    }
+
+    final firstCandidate = candidates.first as Map<String, dynamic>;
+    final content = firstCandidate['content'] as Map<String, dynamic>?;
+    final parts = content?['parts'] as List<dynamic>?;
+
+    if (parts != null && parts.isNotEmpty) {
+      final textBuffer = StringBuffer();
+      for (final part in parts) {
+        if (part is Map && part.containsKey('text')) {
+          textBuffer.write(part['text']);
+        }
+      }
+      final result = TextCleaner.clean(textBuffer.toString());
+      if (result.isNotEmpty) return result;
+    }
+
+    throw Exception('Empty model response');
+  }
+
+  Future<String> _callOpenRouterApi(
+    http.Client client,
+    String modelName,
+    List<ChatMessage> history,
+  ) async {
+    final uri = Uri.parse(openRouterBaseUrl);
+
     final messages = <Map<String, String>>[
       {'role': 'system', 'content': autoLanguageInstruction},
       ..._buildApiMessages(history),
     ];
-    final payload = <String, Object?>{
-      'model': model.id,
-      'messages': messages,
-      'temperature': model.temperature,
-      'top_p': model.topP,
-      'max_tokens': model.maxTokens,
-      'stream': false,
-      ...model.extraBody,
-    };
-    if (model.frequencyPenalty != null) {
-      payload['frequency_penalty'] = model.frequencyPenalty;
-    }
-    if (model.presencePenalty != null) {
-      payload['presence_penalty'] = model.presencePenalty;
-    }
 
-    final response = await http.post(
+    final payload = <String, dynamic>{
+      'model': modelName,
+      'messages': messages,
+      'temperature': 0.7,
+      'max_tokens': 1000,
+      'stream': false,
+    };
+
+    final response = await client.post(
       uri,
       headers: {
-        'Authorization': 'Bearer $apiKey',
+        'Authorization': 'Bearer $openRouterApiKey',
         'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://aiwatch.wearable.app',
+        'X-Title': 'OleksandrAI Watch',
       },
       body: jsonEncode(payload),
     );
@@ -243,7 +362,12 @@ class GeminiService with ChangeNotifier {
   }
 
   String _resolveModelName(String modelName) {
-    return _modelConfigs.containsKey(modelName) ? modelName : _fallbackModelId;
+    if (modelName == modelUltra ||
+        modelName == modelPro ||
+        modelName == modelFast) {
+      return modelName;
+    }
+    return modelUltra;
   }
 
   void loadHistoryFromSession(List<Map<String, String>> messages) {
@@ -290,8 +414,10 @@ class GeminiService with ChangeNotifier {
     _watchAssistantService.startThinkingStatus(label: 'Thinking...');
   }
 
-  void _stopThinking() {
-    if (_activeThinkingJobs > 0) {
+  void _stopThinking({bool forced = false}) {
+    if (forced) {
+      _activeThinkingJobs = 0;
+    } else if (_activeThinkingJobs > 0) {
       _activeThinkingJobs -= 1;
     }
     if (_activeThinkingJobs > 0) return;
@@ -309,6 +435,7 @@ class GeminiService with ChangeNotifier {
   @override
   void dispose() {
     _thinkingTicker?.cancel();
+    _activeHttpClient?.close();
     _watchAssistantService.stopThinkingStatus();
     super.dispose();
   }

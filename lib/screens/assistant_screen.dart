@@ -138,9 +138,11 @@ class _AssistantScreenState extends State<AssistantScreen>
     });
 
     _speech.listen(
-      listenMode: stt.ListenMode.dictation,
-      onDevice: true,
-      listenOptions: stt.SpeechListenOptions(partialResults: true),
+      listenOptions: stt.SpeechListenOptions(
+        listenMode: stt.ListenMode.dictation,
+        onDevice: true,
+        partialResults: true,
+      ),
       onResult: (result) {
         if (!mounted) return;
         setState(() {
@@ -481,14 +483,14 @@ class _AssistantScreenState extends State<AssistantScreen>
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: (_isListening ? Colors.red : accent).withOpacity(
+                      color: (_isListening ? Colors.red.shade400 : accent).withOpacity(
                         0.5,
                       ),
                       width: 2.6,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: (_isListening ? Colors.red : accent).withOpacity(
+                        color: (_isListening ? Colors.red.shade400 : accent).withOpacity(
                           0.3,
                         ),
                         blurRadius: 18,
@@ -504,7 +506,7 @@ class _AssistantScreenState extends State<AssistantScreen>
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: (_isListening ? Colors.red : accent).withOpacity(
+                      color: (_isListening ? Colors.red.shade400 : accent).withOpacity(
                         0.25,
                       ),
                       width: 1.4,
@@ -512,14 +514,14 @@ class _AssistantScreenState extends State<AssistantScreen>
                   ),
                 ),
               Container(
-                width: 88,
-                height: 88,
+                width: 80,
+                height: 80,
                 decoration: BoxDecoration(
                   color: Colors.white,
                   shape: BoxShape.circle,
                   border: Border.all(
-                    color: accent.withOpacity(0.25),
-                    width: 1.1,
+                    color: accent.withOpacity(0.28),
+                    width: 1.4,
                   ),
                   boxShadow: [
                     BoxShadow(
@@ -530,11 +532,11 @@ class _AssistantScreenState extends State<AssistantScreen>
                   ],
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.all(12),
                   child: ClipOval(
                     child: Image.asset(
                       'assets/icon/app_icon.png',
-                      fit: BoxFit.cover,
+                      fit: BoxFit.contain,
                     ),
                   ),
                 ),

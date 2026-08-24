@@ -1,27 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsService with ChangeNotifier {
-  static const String defaultModel = 'abacusai/dracarys-llama-3.1-70b-instruct';
+  static const String modelUltra = 'gemini-3.7-flash';
+  static const String modelPro = 'cohere/north-mini-code:free';
+  static const String modelFast = 'liquid/lfm-2.5-2.6b:free';
+
+  static const String defaultModel = modelUltra;
 
   SharedPreferences? _prefs;
 
   ThemeMode _themeMode = ThemeMode.dark;
   String _language = 'en';
   String _model = defaultModel;
+  String _thinkingLevel = 'medium'; // 'off', 'low', 'medium', 'high'
   String _backgroundTheme = 'default';
 
   ThemeMode get themeMode => _themeMode;
   String get language => _language;
   String get model => _model;
+  String get thinkingLevel => _thinkingLevel;
   String get backgroundTheme => _backgroundTheme;
 
-  // Available models
+  // Available models: 4.0 Ultra, 4.0 Pro, 4.0 Fast
   static const List<Map<String, String>> availableModels = [
-    {'id': defaultModel, 'name': 'AFIE 2.5'},
-    {'id': 'bytedance/seed-oss-36b-instruct', 'name': 'AFIE 3.0'},
+    {'id': modelUltra, 'name': '4.0 ultra'},
+    {'id': modelPro, 'name': '4.0 pro'},
+    {'id': modelFast, 'name': '4.0 fast'},
   ];
 
   // Display name mapping logic
@@ -53,6 +58,7 @@ class SettingsService with ChangeNotifier {
     if (!isKnownModel) {
       _prefs!.setString('model', _model);
     }
+    _thinkingLevel = _prefs!.getString('thinkingLevel') ?? 'medium';
     _backgroundTheme = _prefs!.getString('backgroundTheme') ?? 'default';
 
     notifyListeners();
@@ -75,6 +81,12 @@ class SettingsService with ChangeNotifier {
     _model = newModel;
     notifyListeners();
     await _prefs?.setString('model', newModel);
+  }
+
+  Future<void> setThinkingLevel(String level) async {
+    _thinkingLevel = level;
+    notifyListeners();
+    await _prefs?.setString('thinkingLevel', level);
   }
 
   Future<void> setBackgroundTheme(String theme) async {

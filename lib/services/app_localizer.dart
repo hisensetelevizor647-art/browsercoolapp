@@ -31,6 +31,18 @@ class AppLocalizer {
 
   String get aiModel => _t(en: 'AI Model', uk: 'Модель AI', sk: 'AI model');
 
+  String get thinkingMode =>
+      _t(en: 'Thinking Mode', uk: 'Режим мислення', sk: 'Režim premýšľania');
+
+  String get thinkingOff =>
+      _t(en: 'Off', uk: 'Вимкнено', sk: 'Vypnuté');
+  String get thinkingLow =>
+      _t(en: 'Low', uk: 'Швидкий', sk: 'Nízky');
+  String get thinkingMedium =>
+      _t(en: 'Medium', uk: 'Збалансований', sk: 'Stredný');
+  String get thinkingHigh =>
+      _t(en: 'High', uk: 'Глибокий', sk: 'Hlboký');
+
   String get darkMode =>
       _t(en: 'Dark Mode', uk: 'Темна тема', sk: 'Tmavy rezim');
 
@@ -44,12 +56,26 @@ class AppLocalizer {
   String get noHistory =>
       _t(en: 'No History', uk: 'Історія порожня', sk: 'Bez histórie');
 
+  String get searchHistory =>
+      _t(en: 'Search chats...', uk: 'Пошук чатів...', sk: 'Hľadať chaty...');
+
+  String get deleteChat =>
+      _t(en: 'Delete', uk: 'Видалити', sk: 'Vymazať');
+
   String get close => _t(en: 'Close', uk: 'Закрити', sk: 'Zavrieť');
 
+  String get stop => _t(en: 'Stop', uk: 'Стоп', sk: 'Stop');
+
+  String get stopRecording =>
+      _t(en: 'Stop & Send', uk: 'Стоп і відправити', sk: 'Stop a odoslať');
+
+  String get stopGeneration =>
+      _t(en: 'Stop generation', uk: 'Зупинити генерацію', sk: 'Zastaviť generovanie');
+
   String get newChat => _t(
-    en: 'New chat started',
-    uk: 'Новий чат створено',
-    sk: 'Nový chat vytvorený',
+    en: 'New chat',
+    uk: 'Новий чат',
+    sk: 'Nový chat',
   );
 
   String get micPermissionRequired => _t(
@@ -60,6 +86,9 @@ class AppLocalizer {
 
   String get listening =>
       _t(en: 'Listening...', uk: 'Слухаю...', sk: 'Počúvam...');
+
+  String get transcribing =>
+      _t(en: 'Processing...', uk: 'Розпізнавання...', sk: 'Spracovanie...');
 
   String get thinking =>
       _t(en: 'Thinking...', uk: 'Думаю...', sk: 'Premýšľam...');
@@ -75,14 +104,14 @@ class AppLocalizer {
 
   String get chatPromptHint => _t(
     en: 'Type message...',
-    uk: 'Введи повідомлення...',
-    sk: 'Napíš správu...',
+    uk: 'Введіть повідомлення...',
+    sk: 'Napíšte správu...',
   );
 
   String get devicePromptHint => _t(
     en: 'Type app to open...',
-    uk: 'Введи назву додатка...',
-    sk: 'Napíš aplikáciu na otvorenie...',
+    uk: 'Введіть додаток...',
+    sk: 'Napíšte aplikáciu...',
   );
 
   String get send => _t(en: 'Send', uk: 'Надіслати', sk: 'Odoslať');
@@ -96,7 +125,7 @@ class AppLocalizer {
   );
 
   String get chatInput =>
-      _t(en: 'Chat input', uk: 'Введення чату', sk: 'Vstup chatu');
+      _t(en: 'Prompt input', uk: 'Панель вводу', sk: 'Vstup promptu');
 
   String appOpened(String appName) => _t(
     en: 'Opened: $appName',
@@ -118,41 +147,42 @@ class AppLocalizer {
 
   String get idleAssistantHint => _t(
     en: 'Tap mic to talk',
-    uk: 'Натисни мікрофон, щоб говорити',
-    sk: 'Klepni na mikrofón a hovor',
+    uk: 'Натисни мікрофон',
+    sk: 'Klepni na mikrofón',
   );
+
   String thinkingForSeconds(int seconds) => _t(
     en: 'Thinking: ${seconds}s',
-    uk: 'Thinking: ${seconds}s',
-    sk: 'Thinking: ${seconds}s',
+    uk: 'Мислення: $secondsс',
+    sk: 'Premýšľanie: ${seconds}s',
   );
 
   String get superVoiceMode => _t(
     en: 'Super Voice Mode',
-    uk: 'Super Voice Mode',
-    sk: 'Super Voice Mode',
+    uk: 'Супер Голосовий Режим',
+    sk: 'Super Hlasový Režim',
   );
 
   String get setDefaultAssistant => _t(
     en: 'Set OleksandrAI as assistant',
-    uk: 'Set OleksandrAI as assistant',
-    sk: 'Set OleksandrAI as assistant',
+    uk: 'Встановити як асистента за замовчуванням',
+    sk: 'Nastaviť ako predvoleného asistenta',
   );
 
   String get assistantSettingsOpened => _t(
     en: 'Assistant settings opened',
-    uk: 'Assistant settings opened',
-    sk: 'Assistant settings opened',
+    uk: 'Налаштування асистента відкрито',
+    sk: 'Nastavenia asistenta otvorené',
   );
 
   String get assistantSettingsUnavailable => _t(
     en: 'Assistant settings unavailable',
-    uk: 'Assistant settings unavailable',
-    sk: 'Assistant settings unavailable',
+    uk: 'Налаштування асистента недоступні',
+    sk: 'Nastavenia asistenta nedostupné',
   );
 
   String get voiceSessionTitle =>
-      _t(en: 'Voice chat', uk: 'Голосовий чат', sk: 'Hlasovy chat');
+      _t(en: 'Voice chat', uk: 'Голосовий чат', sk: 'Hlasový chat');
 
   String get subtitlesPlaceholder => _t(
     en: 'Subtitles will appear here',
@@ -160,7 +190,7 @@ class AppLocalizer {
     sk: 'Titulky sa zobrazia tu',
   );
 
-  String get youLabel => _t(en: 'You', uk: 'Ти', sk: 'Ty');
+  String get youLabel => _t(en: 'You', uk: 'Ви', sk: 'Vy');
 
   String get aiLabel => _t(en: 'AI', uk: 'AI', sk: 'AI');
 
