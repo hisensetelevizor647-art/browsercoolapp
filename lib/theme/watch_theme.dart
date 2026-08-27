@@ -166,7 +166,7 @@ class WatchTheme {
       dialogBackgroundColor: _darkSurface,
       shadowColor: Colors.black,
     );
-
+    return base.copyWith(
       textTheme: _safeTextTheme(base.textTheme),
       appBarTheme: const AppBarTheme(
         backgroundColor: Colors.transparent,
