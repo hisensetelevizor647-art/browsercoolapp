@@ -90,7 +90,7 @@ class WatchTheme {
     );
 
     return base.copyWith(
-      textTheme: GoogleFonts.soraTextTheme(base.textTheme),
+      textTheme: _safeTextTheme(base.textTheme),
       appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent,
         foregroundColor: scheme.onSurface,
@@ -167,8 +167,7 @@ class WatchTheme {
       shadowColor: Colors.black,
     );
 
-    return base.copyWith(
-      textTheme: GoogleFonts.soraTextTheme(base.textTheme),
+      textTheme: _safeTextTheme(base.textTheme),
       appBarTheme: const AppBarTheme(
         backgroundColor: Colors.transparent,
         foregroundColor: Color(0xFFF1F5F9),
@@ -214,5 +213,13 @@ class WatchTheme {
         contentTextStyle: TextStyle(color: Color(0xFFF1F5F9), fontSize: 12),
       ),
     );
+  }
+
+  static TextTheme _safeTextTheme(TextTheme base) {
+    try {
+      return GoogleFonts.soraTextTheme(base);
+    } catch (_) {
+      return base;
+    }
   }
 }

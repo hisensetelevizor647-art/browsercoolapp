@@ -12,11 +12,42 @@ import 'theme/watch_theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    debugPrint('Flutter error: ${details.exception}');
+  };
+
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text(
+            'Error loading screen\n${details.exception}',
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.redAccent, fontSize: 10),
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ),
+    );
+  };
+
   final settingsService = SettingsService();
-  await settingsService.init();
+  try {
+    await settingsService.init();
+  } catch (e) {
+    debugPrint('Failed to init settings: $e');
+  }
 
   final chatHistoryService = ChatHistoryService();
-  await chatHistoryService.init();
+  try {
+    await chatHistoryService.init();
+  } catch (e) {
+    debugPrint('Failed to init chat history: $e');
+  }
 
   runApp(
     MultiProvider(
@@ -56,6 +87,8 @@ class MyApp extends StatelessWidget {
 
         return MaterialApp(
           title: 'OleksandrAI Watch',
+          debugShowCheckedModeBanner: false,
+          color: Colors.black,
           theme: WatchTheme.light(),
           darkTheme: WatchTheme.dark(),
           themeMode: settings.themeMode,
