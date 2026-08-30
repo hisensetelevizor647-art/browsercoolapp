@@ -37,6 +37,8 @@ migrate_working_dir/
 .gradle-home/
 /coverage/
 
+/coverage/
+
 # Symbolication related
 app.*.symbols
 
@@ -47,3 +49,5 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+!/android/app/watch_release.jks
